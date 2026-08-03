@@ -465,16 +465,7 @@ function booksTable(books) {
 /* ============ Buch-Detail Modal ============ */
 let sourcesTimer = null;
 document.addEventListener("click", async e => {
-  const open = e.target.closest("[data-act='book-open']");
-  if (open) { showBookModal(open.dataset.id); return; }
-  const sources = e.target.closest("[data-act='book-sources']");
-  if (sources) {
-    e.stopPropagation();
-    const bid = sources.dataset.id;
-    // Modal öffnen und direkt Quellen suchen
-    showBookModal(bid, { autoSearch: true });
-    return;
-  }
+  // Buttons in klickbaren Zeilen haben Vorrang vor book-open
   const wanted = e.target.closest("[data-act='book-wanted']");
   if (wanted) {
     e.stopPropagation();
@@ -497,7 +488,16 @@ document.addEventListener("click", async e => {
       toast("Buch gelöscht", "success");
       router();
     } catch (err) { toast(err.message, "error"); }
+    return;
   }
+  const sources = e.target.closest("[data-act='book-sources']");
+  if (sources) {
+    e.stopPropagation();
+    showBookModal(sources.dataset.id, { autoSearch: true });
+    return;
+  }
+  const open = e.target.closest("[data-act='book-open']");
+  if (open) { showBookModal(open.dataset.id); return; }
 });
 
 async function showBookModal(id, opts = {}) {
@@ -576,6 +576,11 @@ async function searchSources(bookId, title) {
     const r = await api(`api/search/downloads?book_id=${bookId}`);
     if (r.done) { renderSources(box, r.results, bookId); return; }
     sourcesTimer = setInterval(async () => {
+      // Modal geschlossen → Polling beenden
+      if (document.getElementById("book-modal").classList.contains("hidden")) {
+        clearInterval(sourcesTimer);
+        return;
+      }
       try {
         const r2 = await api(`api/search/downloads?book_id=${bookId}`);
         if (r2.done) {

@@ -447,6 +447,10 @@ def api_search_metadata(q: str = Query(..., min_length=2), type: str = "all"):
     return out
 
 
+# läuft gerade eine Quellensuche für ein Buch? (Dedupe gegen Thread-Explosion)
+_search_running = {}
+
+
 @app.get("/api/search/downloads")
 def api_search_downloads(book_id: int):
     import json as _json
@@ -463,6 +467,11 @@ def api_search_downloads(book_id: int):
                 return {"done": True, "cached": True, "results": _json.loads(cached["results"])}
         except Exception:
             pass
+    # bereits laufende Suche für dieses Buch → nur Status zurückgeben (Frontend pollt)
+    if _search_running.get(book_id):
+        return {"done": False, "running": True}
+
+    _search_running[book_id] = True
 
     def _worker():
         try:
@@ -474,6 +483,8 @@ def api_search_downloads(book_id: int):
             db.log_event("error", "search", str(e))
             db.ex("INSERT OR REPLACE INTO searchcache(book_id, results, created) VALUES(?,?,?)",
                   (book_id, "[]", db.now()))
+        finally:
+            _search_running[book_id] = False
 
     threading.Thread(target=_worker, daemon=True).start()
     db.log_event("info", "search", f"Quellensuche für '{b['title']}' gestartet …")
