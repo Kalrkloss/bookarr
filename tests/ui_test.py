@@ -133,6 +133,7 @@ with sync_playwright() as p:
 
     def t_author_page():
         goto(page, "/#/authors")
+        page.wait_for_selector(".author-card", timeout=15000)
         assert page.locator(".author-card-img").count() >= 2, "Autoren-Karten ohne Bilder"
         page.locator(".author-card").first.click()
         page.wait_for_selector(".author-header", timeout=10000)
