@@ -28,8 +28,9 @@ class TimeoutHardenTests(unittest.TestCase):
     # ---------- IRC lock ----------
     def test_irc_lock_bounded(self):
         import irc
-        src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "irc.py"),
-                   encoding="utf-8").read()
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "irc.py"),
+                  encoding="utf-8") as f:
+            src = f.read()
         self.assertIn("_irc_lock.acquire(timeout=120)", src)
         self.assertIn('_irc_lock.acquire(timeout=self.cfg["dltimeout"] + 180)', src)
         self.assertIn("_irc_lock.release()", src)

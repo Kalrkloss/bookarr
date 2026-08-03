@@ -5,6 +5,8 @@ import threading
 import traceback
 from pathlib import Path
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,18 +26,16 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("bookarr")
 
-app = FastAPI(title="Bookarr", version="1.0.0")
 
-
-@app.on_event("startup")
-def _startup():
+@asynccontextmanager
+async def lifespan(_app):
     db.connect()
     scheduler.start()
-
-
-@app.on_event("shutdown")
-def _shutdown():
+    yield
     scheduler.stop()
+
+
+app = FastAPI(title="Bookarr", version="1.0.0", lifespan=lifespan)
 
 
 # ---------------- static frontend ----------------
