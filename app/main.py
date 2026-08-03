@@ -38,7 +38,7 @@ def _shutdown():
     scheduler.stop()
 
 
-# ---------------- statisches Frontend ----------------
+# ---------------- static frontend ----------------
 
 @app.get("/")
 def index():
@@ -48,7 +48,7 @@ def index():
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-# ---------------- Status / Übersicht ----------------
+# ---------------- status / overview ----------------
 
 @app.get("/api/status")
 def api_status():
@@ -111,7 +111,7 @@ def api_overview():
     return {"wanted": wanted, "active": active, "events": events, "sab_queue": sab}
 
 
-# ---------------- Autoren ----------------
+# ---------------- authors ----------------
 
 class AuthorAdd(BaseModel):
     ol_key: str
@@ -147,7 +147,7 @@ def api_authors(q: str = "", limit: int = 200):
 def api_author_detail(aid: int, lang: str = ""):
     a = db.q1("SELECT * FROM authors WHERE id=?", (aid,))
     if not a:
-        raise HTTPException(404, "Autor nicht gefunden")
+        raise HTTPException(404, "Author not found")
     a["languages"] = db.parse_langs(a["languages"])
     book_filter = "author_id=?"
     params = [aid]
@@ -180,7 +180,7 @@ class AuthorPatch(BaseModel):
 def api_patch_author(aid: int, body: AuthorPatch):
     a = db.q1("SELECT id FROM authors WHERE id=?", (aid,))
     if not a:
-        raise HTTPException(404, "Autor nicht gefunden")
+        raise HTTPException(404, "Author not found")
     if body.monitor is not None:
         db.ex("UPDATE authors SET monitor=?, updated=? WHERE id=?", (1 if body.monitor else 0, db.now(), aid))
     if body.interval_hours:
@@ -198,9 +198,9 @@ def api_sync_author(aid: int):
         try:
             library.sync_author(aid)
         except Exception as e:
-            db.log_event("error", "author", f"Sync fehlgeschlagen: {e}")
+            db.log_event("error", "author", f"Sync failed: {e}")
     threading.Thread(target=_run, daemon=True).start()
-    return {"ok": True, "message": "Sync gestartet"}
+    return {"ok": True, "message": "Sync started"}
 
 
 @app.post("/api/authors/{aid}/wikipedia-scan")
@@ -213,7 +213,7 @@ def api_wikipedia_scan(aid: int):
         m = re_match_lang(a["wikipedia_url"])
         lang = m or "de"
         works = metadata.wikipedia_author_works(a["name"], lang)
-    # auch Standard-Versuche über bekannte Sprachversionen
+    # also try the standard language versions
     if not works:
         for lang in ("de", "en"):
             works = metadata.wikipedia_author_works(a["name"], lang)
@@ -232,7 +232,7 @@ def api_wikipedia_scan(aid: int):
                f"Quelle: Wikipedia", "wanted" if want else "missing", 1 if want else 0, "wikipedia",
                db.now(), db.now()))
         added += 1
-    db.log_event("success", "wikipedia", f"Wikipedia-Scan '{a['name']}': {added} neue Bücher")
+    db.log_event("success", "wikipedia", f"Wikipedia scan '{a["name"]}': {added} new books")
     return {"ok": True, "added": added, "found": len(works)}
 
 
@@ -245,11 +245,11 @@ def re_match_lang(url):
 @app.delete("/api/authors/{aid}")
 def api_delete_author(aid: int):
     db.ex("DELETE FROM authors WHERE id=?", (aid,))
-    db.log_event("info", "author", f"Autor {aid} gelöscht")
+    db.log_event("info", "author", f"Author {aid} deleted")
     return {"ok": True}
 
 
-# ---------------- Serien ----------------
+# ---------------- series ----------------
 
 class SeriesPatch(BaseModel):
     monitor: int = None
@@ -268,7 +268,7 @@ def api_patch_series(sid: int, body: SeriesPatch):
 @app.post("/api/series/{sid}/sync")
 def api_sync_series(sid: int):
     threading.Thread(target=lambda: _safe(lambda: library.sync_series(sid),
-                                          "series", "Sync Serie fehlgeschlagen"), daemon=True).start()
+                                          "series", "Series sync failed"), daemon=True).start()
     return {"ok": True}
 
 
@@ -286,7 +286,7 @@ def _safe(fn, src, msg):
         db.log_event("error", src, f"{msg}: {e}")
 
 
-# ---------------- Bücher ----------------
+# ---------------- books ----------------
 
 @app.get("/api/books")
 def api_books(q: str = "", status: str = "", author_id: int = 0, language: str = "",
@@ -322,7 +322,7 @@ def api_book_detail(bid: int):
                  FROM books b LEFT JOIN authors a ON a.id=b.author_id
                  LEFT JOIN series s ON s.id=b.series_id WHERE b.id=?""", (bid,))
     if not b:
-        raise HTTPException(404, "Buch nicht gefunden")
+        raise HTTPException(404, "Book not found")
     return b
 
 
@@ -383,7 +383,7 @@ def api_add_book(body: BookAdd):
          "ol", now, now))
     if body.wanted:
         library._set_wanted(bid)
-    db.log_event("success", "library", f"Buch '{body.title}' hinzugefügt")
+    db.log_event("success", "library", f"Book '{body.title}' added")
     return {"ok": True, "id": bid, "duplicate": False}
 
 
@@ -391,7 +391,7 @@ def api_add_book(body: BookAdd):
 def api_patch_book(bid: int, body: BookPatch):
     b = db.q1("SELECT id FROM books WHERE id=?", (bid,))
     if not b:
-        raise HTTPException(404, "Buch nicht gefunden")
+        raise HTTPException(404, "Book not found")
     if body.wanted is not None:
         library.set_book_wanted(bid, bool(body.wanted), body.interval_hours)
     if body.status:
@@ -408,7 +408,7 @@ def api_patch_book(bid: int, body: BookPatch):
 def api_convert_book(bid: int):
     b = db.q1("SELECT * FROM books WHERE id=?", (bid,))
     if not b or not b["file_path"]:
-        raise HTTPException(400, "Kein Buch vorhanden")
+        raise HTTPException(400, "No book available")
     def _run():
         try:
             library.convert_book(b["file_path"], bid)
@@ -425,7 +425,7 @@ def api_delete_book(bid: int):
     return {"ok": True}
 
 
-# ---------------- Metadaten-Suche ----------------
+# ---------------- metadata search ----------------
 
 @app.get("/api/search/metadata")
 def api_search_metadata(q: str = Query(..., min_length=2), type: str = "all"):
@@ -444,11 +444,11 @@ def api_search_metadata(q: str = Query(..., min_length=2), type: str = "all"):
             except Exception:
                 out["wikipedia"] = []
     except Exception as e:
-        raise HTTPException(502, f"Metadaten-Suche fehlgeschlagen: {e}")
+        raise HTTPException(502, f"Metadata search failed: {e}")
     return out
 
 
-# läuft gerade eine Quellensuche für ein Buch? (Dedupe gegen Thread-Explosion)
+# is a source search already running for this book? (dedupe against thread explosion)
 _search_running = {}
 
 
@@ -468,7 +468,7 @@ def api_search_downloads(book_id: int):
                 return {"done": True, "cached": True, "results": _json.loads(cached["results"])}
         except Exception:
             pass
-    # bereits laufende Suche für dieses Buch → nur Status zurückgeben (Frontend pollt)
+    # already running search for this book → return status only (frontend polls)
     if _search_running.get(book_id):
         return {"done": False, "running": True}
 
@@ -488,11 +488,11 @@ def api_search_downloads(book_id: int):
             _search_running[book_id] = False
 
     threading.Thread(target=_worker, daemon=True).start()
-    db.log_event("info", "search", f"Quellensuche für '{b['title']}' gestartet …")
+    db.log_event("info", "search", f"Source search for '{b["title"]}' started …")
     return {"done": False}
 
 
-# ---------------- Downloads ----------------
+# ---------------- downloads ----------------
 
 class DownloadStart(BaseModel):
     book_id: int
@@ -512,7 +512,7 @@ def api_start_download(body: DownloadStart):
               "url": body.url, "bot": body.bot, "size": body.size}
     dl_id = library.start_download(b, result)
     if not dl_id:
-        raise HTTPException(500, "Download konnte nicht gestartet werden")
+        raise HTTPException(500, "Download could not be started")
     return {"ok": True, "id": dl_id}
 
 
@@ -531,7 +531,7 @@ def api_delete_download(did: int):
     return {"ok": True}
 
 
-# ---------------- Wanted ----------------
+# ---------------- wanted ----------------
 
 @app.get("/api/wanted")
 def api_wanted():
@@ -544,7 +544,7 @@ def api_wanted_search_now():
     return {"ok": True, "message": "Wanted-Suche gestartet"}
 
 
-# ---------------- Events ----------------
+# ---------------- events ----------------
 
 @app.get("/api/events")
 def api_events(limit: int = 100, level: str = ""):
@@ -553,7 +553,7 @@ def api_events(limit: int = 100, level: str = ""):
     return db.q("SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,))
 
 
-# ---------------- Einstellungen ----------------
+# ---------------- settings ----------------
 
 @app.get("/api/settings")
 def api_get_settings():
@@ -578,7 +578,7 @@ def api_put_settings(body: SettingsPut):
                       "VALUES(?,?,?,?,?,?)",
                       (i["name"], i["url"], i.get("api_key", ""), i.get("categories", "7000,7020"),
                        1 if i.get("enabled") else 0, i.get("priority", 0)))
-    db.log_event("info", "settings", "Einstellungen gespeichert")
+    db.log_event("info", "settings", "Settings saved")
     return {"ok": True}
 
 
@@ -604,21 +604,21 @@ def api_test_settings(body: dict):
             import requests
             r = requests.get(f"{url}/api", params={"mode": "version", "apikey": key, "output": "json"}, timeout=8)
             result["ok"] = r.status_code == 200 and "version" in r.text
-            result["message"] = "OK" if result["ok"] else "Ungültige Antwort"
+            result["message"] = "OK" if result["ok"] else "Invalid response"
         except Exception as e:
             result["message"] = str(e)
     elif name == "irc":
         host = body.get("server", "")
         result["ok"] = bool(host)
-        result["message"] = "Server konfiguriert" if result["ok"] else "Kein Server angegeben"
+        result["message"] = "Server configured" if result["ok"] else "Kein Server angegeben"
     elif name == "google_books":
         key = body.get("key", "")
         result["ok"] = bool(key)
-        result["message"] = "Key hinterlegt" if key else "Kein API-Key"
+        result["message"] = "Key stored" if key else "Kein API-Key"
     return result
 
 
-# ---------------- Aktionen / System ----------------
+# ---------------- actions / system ----------------
 
 @app.post("/api/actions/scan-library")
 def api_scan_library():
@@ -628,13 +628,13 @@ def api_scan_library():
         except Exception as e:
             db.log_event("error", "library", str(e))
     threading.Thread(target=_run, daemon=True).start()
-    return {"ok": True, "message": "Scan gestartet"}
+    return {"ok": True, "message": "Scan started"}
 
 
 @app.post("/api/actions/sync-all")
 def api_sync_all():
     scheduler.sync_all_now()
-    return {"ok": True, "message": "Sync gestartet"}
+    return {"ok": True, "message": "Sync started"}
 
 
 @app.get("/api/system/logs")
@@ -645,7 +645,7 @@ def api_logs():
                            capture_output=True, text=True, timeout=5)
         return {"logs": r.stdout.splitlines()}
     except Exception as e:
-        return {"logs": [f"Log nicht verfügbar: {e}"]}
+        return {"logs": [f"Log unavailable: {e}"]}
 
 
 @app.get("/api/health")

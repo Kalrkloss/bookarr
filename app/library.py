@@ -1,4 +1,4 @@
-"""Bookarr — Bibliotheks-Logik: Autoren, Bücher, Serien, Wanted, Downloads."""
+"""Bookarr — library logic: authors, books, series, wanted, downloads."""
 import logging
 import os
 import re
@@ -15,16 +15,16 @@ import metadata
 log = logging.getLogger("bookarr.library")
 
 
-# ---------------- Autoren ----------------
+# ---------------- authors ----------------
 
 def add_author(ol_key, languages=None):
-    """Autor aus Open Library anlegen (mit Werken + Serien). Gibt author_id."""
+    """Add an author from Open Library (with works + series). Returns author_id."""
     detail = metadata.author_detail(ol_key)
     if not detail:
-        raise RuntimeError(f"Open Library: Autor {ol_key} nicht gefunden")
+        raise RuntimeError(f"Open Library: author {ol_key} not found")
     works = metadata.author_works(ol_key)
     if not works:
-        raise RuntimeError(f"Open Library: keine Werke für {detail['name']} gefunden")
+        raise RuntimeError(f"Open Library: no works found for {detail['name']}")
 
     now = db.now()
     langs = db.json_dump(languages or ["de", "en"])
@@ -35,15 +35,15 @@ def add_author(ol_key, languages=None):
          detail["website"], detail["birth_date"], detail["death_date"], detail["bio"],
          langs, now, now))
 
-    # Werke parallel anreichern (Editionen → genaues Datum, ISBN, Cover, Serie)
+    # enrich works in parallel (editions → exact date, ISBN, cover, series)
     def enrich(w):
         try:
             eds = metadata.work_editions(w["ol_work_key"], limit=25)
             if eds:
-                # Datum: NEUESTE Edition mit Jahr (macht auch zukünftige Bücher sichtbar)
+                # date: NEWEST edition with a year (also surfaces upcoming books)
                 dated = [e for e in eds if e["year"]]
                 best_date = max(dated, key=lambda e: e["year"]) if dated else eds[0]
-                # Sprache: älteste Edition mit Sprache (≈ Originalsprache)
+                # language: oldest edition with a language (≈ original language)
                 lang_ed = None
                 for e in eds:
                     if e["language"]:
@@ -84,7 +84,7 @@ def add_author(ol_key, languages=None):
             added_books += 1
         except Exception:
             pass
-    db.log_event("success", "author", f"Autor '{detail['name']}' angelegt ({added_books} Bücher)")
+    db.log_event("success", "author", f"Author '{detail["name"]}' created ({added_books} books)")
     return author_id
 
 
@@ -108,7 +108,7 @@ def _sort_name(name):
 def _get_or_create_series(author_id, name, position, ol_work_key, ol_series_key=""):
     if not name:
         return None
-    # Name für Key-only-Serien auflösen
+    # resolve name for key-only series
     if name.startswith("/series/") and ol_series_key:
         det = metadata.series_detail(name)
         if det and det["name"]:
@@ -124,7 +124,7 @@ def _get_or_create_series(author_id, name, position, ol_work_key, ol_series_key=
 
 
 def sync_author(author_id):
-    """Autor erneut abgleichen: neue Werke/Serien erkennen, Wanted-Markierungen setzen."""
+    """Re-sync an author: detect new works/series, set wanted flags."""
     a = db.q1("SELECT * FROM authors WHERE id=?", (author_id,))
     if not a:
         return 0
@@ -150,7 +150,7 @@ def sync_author(author_id):
         lang = db.lang_code(w["languages"][0] if w["languages"] else "")
         year = w["first_publish_year"]
         date = f"{year}-01-01" if year else ""
-        # genaues Datum + Sprache für neue Werke nachziehen
+        # fetch exact date + language for new works
         try:
             eds = metadata.work_editions(w["ol_work_key"], limit=15)
             if eds:
@@ -182,16 +182,16 @@ def sync_author(author_id):
             pass
     db.ex("UPDATE authors SET last_checked=?, updated=? WHERE id=?", (now, now, author_id))
     if new_books:
-        db.log_event("info", "author", f"Sync '{a['name']}': {new_books} neue Bücher")
+        db.log_event("info", "author", f"Sync '{a["name"]}': {new_books} new books")
     return new_books
 
 
 def sync_series(series_id):
-    """Serie abgleichen: neue Bände als Wanted markieren."""
+    """Re-sync a series: mark new volumes as wanted."""
     s = db.q1("SELECT * FROM series WHERE id=?", (series_id,))
     if not s:
         return 0
-    # Suche über Open Library Series-Suche
+    # search via Open Library series search
     try:
         results = metadata.search_books(f"series:{s['name']}", limit=30)
     except Exception:
@@ -219,7 +219,7 @@ def sync_series(series_id):
             pass
     db.ex("UPDATE series SET last_checked=?, updated=? WHERE id=?", (now, now, series_id))
     if new_books:
-        db.log_event("info", "series", f"Sync Serie '{s['name']}': {new_books} neue Bände")
+        db.log_event("info", "series", f"Series sync '{s["name"]}': {new_books} new volumes")
     return new_books
 
 
@@ -258,13 +258,13 @@ def mark_wanted_failed(book_id, msg=""):
     db.ex("UPDATE wanted SET status='failed', last_search=? WHERE book_id=?",
           (db.now(), book_id))
     db.ex("UPDATE books SET status='missing', updated=? WHERE id=?", (db.now(), book_id))
-    db.log_event("warn", "wanted", f"Suche fehlgeschlagen: {msg}")
+    db.log_event("warn", "wanted", f"Search failed: {msg}")
 
 
-# ---------------- Suche & Download ----------------
+# ---------------- search & download ----------------
 
 def search_downloads(book):
-    """Suchte NZB- und IRC-Quellen für ein Buch."""
+    """Search NZB and IRC sources for a book."""
     title = book["title"]
     author = db.q1("SELECT name FROM authors WHERE id=?", (book["author_id"],)) if book["author_id"] else None
     query = f"{title} {author['name'] if author else ''}".strip()
@@ -272,23 +272,23 @@ def search_downloads(book):
     try:
         results += indexers.search_all_indexers(query)
     except Exception as e:
-        db.log_event("error", "newznab", f"NZB-Suche fehlgeschlagen: {e}")
+        db.log_event("error", "newznab", f"NZB search failed: {e}")
     try:
         results += irc_mod.search_irc(title)
     except Exception as e:
-        db.log_event("error", "irc", f"IRC-Suche fehlgeschlagen: {e}")
+        db.log_event("error", "irc", f"IRC search failed: {e}")
     return results
 
 
 def start_download(book, result):
-    """Download für ein Buch starten. result: ein Suchtreffer."""
+    """Start a download for a book. result: a search hit."""
     now = db.now()
     if result["source"] == "irc":
         sources = [{"bot": result["bot"], "title": result["title"], "size": result.get("size", "")}]
         dl_id = db.ex("INSERT INTO downloads(book_id, title, source, irc_user, filename, status, "
                       "message, added, updated) VALUES(?,?,?,?,?,?,?,?,?)",
                       (book["id"], book["title"], "irc", result["bot"], result["title"],
-                       "downloading", "IRC-Download gestartet", now, now))
+                       "downloading", "IRC download started", now, now))
         threading.Thread(target=_irc_download_worker, args=(dl_id, book["id"], sources), daemon=True).start()
         return dl_id
 
@@ -307,7 +307,7 @@ def start_download(book, result):
     # Status setzen
     db.ex("UPDATE books SET status='snatched', updated=? WHERE id=?", (now, book["id"]))
     db.ex("UPDATE wanted SET status='snatched' WHERE book_id=?", (book["id"],))
-    db.log_event("success", "download", f"NZB für '{book['title']}' an SABnzbd übergeben")
+    db.log_event("success", "download", f"NZB for '{book["title"]}' handed to SABnzbd")
     threading.Thread(target=_nzb_completion_worker, args=(dl_id, book["id"], err if not ok else ""), daemon=True).start()
     return dl_id
 
@@ -342,7 +342,7 @@ def _nzb_completion_worker(dl_id, book_id, _unused=""):
             if not dl:
                 return
     except Exception as e:
-        db.log_event("error", "download", f"NZB-Überwachung abgebrochen: {e}")
+        db.log_event("error", "download", f"NZB watch aborted: {e}")
     if not completed:
         return
     if failed:
@@ -374,9 +374,9 @@ def _irc_download_worker(dl_id, book_id, sources):
     ok, path, err = irc_mod.download_irc(sources, dest)
     if not ok:
         db.ex("UPDATE downloads SET status='failed', message=?, updated=?, completed=? WHERE id=?",
-              (err or "IRC-Fehler", db.now(), db.now(), dl_id))
+              (err or "IRC error", db.now(), db.now(), dl_id))
         db.ex("UPDATE books SET status='missing' WHERE id=?", (book_id,))
-        db.log_event("error", "download", f"IRC-Download fehlgeschlagen: {err}")
+        db.log_event("error", "download", f"IRC download failed: {err}")
         return
     _post_process(dl_id, book_id, os.path.dirname(path), False, "", path)
 
@@ -396,15 +396,15 @@ def _sab_complete_dir():
 
 def _post_process(dl_id, book_id, folder, failed, fail_msg="", single_file=None):
     """Datei importieren, optional konvertieren, Buch als 'have' markieren.
-    Gibt True zurück, wenn ein Buch importiert wurde."""
+    Returns True if a book was imported."""
     book = db.q1("SELECT * FROM books WHERE id=?", (book_id,))
     if not book:
         return False
     if failed:
         db.ex("UPDATE downloads SET status='failed', message=?, updated=?, completed=? WHERE id=?",
-              (fail_msg or "Download fehlgeschlagen", db.now(), db.now(), dl_id))
+              (fail_msg or "Download failed", db.now(), db.now(), dl_id))
         db.ex("UPDATE wanted SET status='wanted' WHERE book_id=?", (book_id,))
-        db.log_event("warn", "download", f"Download fehlgeschlagen: {fail_msg}")
+        db.log_event("warn", "download", f"Download failed: {fail_msg}")
         return False
     # Buchdatei finden
     path = single_file
@@ -429,7 +429,7 @@ def _post_process(dl_id, book_id, folder, failed, fail_msg="", single_file=None)
     db.ex("DELETE FROM wanted WHERE book_id=?", (book_id,))
     db.ex("UPDATE downloads SET status='completed', message='Importiert', progress=100, updated=?, completed=? WHERE id=?",
           (db.now(), db.now(), dl_id))
-    db.log_event("success", "import", f"'{book['title']}' importiert nach {final_path}")
+    db.log_event("success", "import", f"'{book["title"]}' imported to {final_path}")
     return True
 
 
@@ -443,7 +443,7 @@ def _find_book_file(folder, book):
                 full = os.path.join(root, f)
                 if _file_matches(f, book["title"]):
                     return full
-    # Fallback: größte Buchdatei
+    # fallback: largest book file
     best, best_size = None, 0
     for root, _dirs, files in os.walk(folder):
         for f in files:
@@ -495,5 +495,5 @@ def scan_library():
                 db.ex("DELETE FROM wanted WHERE book_id=?", (b["id"],))
                 found += 1
     if found:
-        db.log_event("success", "library", f"Scan: {found} Bücher in der Bibliothek gefunden")
+        db.log_event("success", "library", f"Scan: {found} books found in the library")
     return found

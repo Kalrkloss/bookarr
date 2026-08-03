@@ -1,4 +1,4 @@
-"""Bookarr — Metadaten-Quellen: Open Library, Wikipedia, Google Books."""
+"""Bookarr — metadata sources: Open Library, Wikipedia, Google Books."""
 import re
 import time
 
@@ -76,7 +76,7 @@ def _bio_text(bio):
 
 
 def author_works(ol_key, limit=300):
-    """Alle Werke eines Autors inkl. Sprache, Serie, erstem Erscheinungsjahr."""
+    """All works of an author incl. language, series, first publication year."""
     data = _get(f"{OL}{ol_key}/works.json", {"limit": limit, "offset": 0})
     works = []
     if not data:
@@ -96,7 +96,7 @@ def author_works(ol_key, limit=300):
                 if not s_name and isinstance(s.get("series"), dict):
                     s_key = s["series"].get("key", "")
                     s_name = s.get("position", "") or ""
-                    s_name = s_key  # Name später über /series/{key}.json auflösen
+                    s_name = s_key  # resolve name later via /series/{key}.json
                     series.append({"ol_key": s_key, "name": s_name, "position": s.get("position", "")})
                     continue
                 series.append({"ol_key": s_key, "name": s_name, "position": s.get("position", "")})
@@ -121,7 +121,7 @@ def _cover(entry):
 
 
 def work_editions(ol_work_key, limit=50):
-    """Editionen eines Werks mit Erscheinungsdatum, ISBN, Sprache, Cover."""
+    """Editions of a work with publish date, ISBN, language, cover."""
     data = _get(f"{OL}{ol_work_key}/editions.json", {"limit": limit})
     out = []
     for e in (data or {}).get("entries", []):
@@ -183,7 +183,7 @@ SECTION_ALIASES = {
 
 
 def wikipedia_author_works(name, lang="de", timeout=15):
-    """Sucht auf der Wikipedia-Seite des Autors die Werke-Sektion und extrahiert Titel."""
+    """Find the works section on the author's Wikipedia page and extract titles."""
     api = f"https://{lang}.wikipedia.org/w/api.php"
     try:
         r = SESSION.get(api, params={
@@ -215,10 +215,10 @@ def wikipedia_author_works(name, lang="de", timeout=15):
 
 
 def _parse_works_wikitext(wt, lang):
-    """Heuristik: Zeilen mit [[Titel]] (Jahr) aus Werke-Sektionen."""
+    """Heuristic: lines with [[Title]] (year) from works sections."""
     works = []
     seen = set()
-    # Reihenfolge der Jahre (de: (2000), en: (2000); auch "2000–2003")
+    # year order (de: (2000), en: (2000); also "2000–2003")
     year_pat = r"\((\d{4})(?:\s*(?:–|-|/)\s*\d{4})?\)"
     for line in wt.splitlines():
         line = line.strip()
@@ -228,7 +228,7 @@ def _parse_works_wikitext(wt, lang):
         if not m:
             continue
         title = m.group(1).strip()
-        title = re.sub(r"\s*\([^)]*\)\s*$", "", title)  # (Roman) etc. am Ende
+        title = re.sub(r"\s*\([^)]*\)\s*$", "", title)  # (novel) etc. at the end
         if not title or title.lower() in ("bild", "datei", "file"):
             continue
         year = None

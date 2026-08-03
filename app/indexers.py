@@ -1,4 +1,4 @@
-"""Bookarr — Indexer-Suche (Prowlarr/Newznab) und SABnzbd-Download."""
+"""Bookarr — indexer search (Prowlarr/Newznab) and SABnzbd download."""
 import json
 import re
 import urllib.parse
@@ -25,12 +25,12 @@ def prowlarr_available():
 
 
 def search_newznab(query, timeout=30):
-    """Suche über Prowlarr (Newznab-kompatibel). Gibt Treffer mit NZB-Links zurück."""
+    """Search via Prowlarr (Newznab-compatible). Returns hits with NZB links."""
     cfg = _prowlarr_config()
     results = []
     if not prowlarr_available():
         return results
-    # Bücher-Kategorien: 7000 (eBooks) + Unterkategorien, 7030 (Audiobooks)
+    # book categories: 7000 (eBooks) + subcategories, 7030 (audiobooks)
     try:
         params = {"query": query, "type": "search", "limit": 100}
         for c in (cfg["cats"] or "7000,7020").split(","):
@@ -41,11 +41,11 @@ def search_newznab(query, timeout=30):
         r = SESSION.get(f"{cfg['url']}/api/v1/search", params=params,
                         headers={"X-Api-Key": cfg["key"]}, timeout=timeout)
         if r.status_code != 200:
-            db.log_event("error", "prowlarr", f"Suche fehlgeschlagen: HTTP {r.status_code}")
+            db.log_event("error", "prowlarr", f"Search failed: HTTP {r.status_code}")
             return results
         data = r.json()
     except Exception as e:
-        db.log_event("error", "prowlarr", f"Suche fehlgeschlagen: {e}")
+        db.log_event("error", "prowlarr", f"Search failed: {e}")
         return results
 
     for item in data:
@@ -69,7 +69,7 @@ def search_newznab(query, timeout=30):
 
 
 def search_all_indexers(query, timeout=40):
-    """Prowlarr + zusätzlich konfigurierte direkte Newznab-Indexer."""
+    """Prowlarr plus additionally configured direct Newznab indexers."""
     results = search_newznab(query, timeout=timeout)
     for idx in db.q("SELECT * FROM indexers WHERE enabled=1 ORDER BY priority DESC"):
         try:
@@ -141,7 +141,7 @@ def sabnzbd_test():
 
 
 def sabnzbd_add_nzb(url, title, category=None):
-    """NZB an SABnzbd übergeben. Gibt (ok, nzo_id) zurück."""
+    """Hand an NZB to SABnzbd. Returns (ok, nzo_id)."""
     c = _sab_config()
     try:
         r = SESSION.get(f"{c['url']}/api", params={
@@ -150,7 +150,7 @@ def sabnzbd_add_nzb(url, title, category=None):
         }, timeout=30)
         data = r.json()
         if data.get("status") is False:
-            return False, data.get("error", "unbekannter Fehler")
+            return False, data.get("error", "unknown error")
         nzo_ids = data.get("nzo_ids", [])
         return True, (nzo_ids[0] if nzo_ids else "")
     except Exception as e:
@@ -158,7 +158,7 @@ def sabnzbd_add_nzb(url, title, category=None):
 
 
 def sabnzbd_queue():
-    """Aktive Downloads aus SABnzbd (für die Übersichtsseite)."""
+    """Active downloads from SABnzbd (for the overview page)."""
     c = _sab_config()
     if not sabnzbd_available():
         return []

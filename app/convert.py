@@ -22,12 +22,12 @@ def available():
 
 
 def convert(path, target_format="epub", book_id=None):
-    """Konvertiert path in target_format. Gibt den Pfad des Ergebnis-Files zurück."""
+    """Convert path to target_format. Returns the path of the result file."""
     target_format = target_format.lower()
     if target_format not in EXTS:
         target_format = "epub"
     if not available():
-        db.log_event("error", "convert", "ebook-convert (Calibre) ist nicht installiert")
+        db.log_event("error", "convert", "ebook-convert (Calibre) is not installed")
         return path
     ext = os.path.splitext(path)[1].lower()
     if ext == EXTS[target_format]:
@@ -43,14 +43,14 @@ def convert(path, target_format="epub", book_id=None):
             except OSError:
                 pass
             db.log_event("success", "convert",
-                         f"Konvertiert nach {target_format.upper()}: {os.path.basename(out)}")
+                         f"Converted to {target_format.upper()}: {os.path.basename(out)}")
             return out
         db.log_event("warn", "convert",
-                     f"Konvertierung fehlgeschlagen: {proc.stderr[-300:]}")
+                     f"Conversion failed: {proc.stderr[-300:]}")
         return path
     except subprocess.TimeoutExpired:
-        db.log_event("error", "convert", "Konvertierung Timeout")
+        db.log_event("error", "convert", "Conversion timed out")
         return path
     except Exception as e:
-        db.log_event("error", "convert", f"Konvertierung Fehler: {e}")
+        db.log_event("error", "convert", f"Conversion error: {e}")
         return path

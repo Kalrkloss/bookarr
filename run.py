@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bookarr — Einstiegspunkt."""
+"""Bookarr — entry point."""
 import os
 import sys
 

@@ -15,14 +15,14 @@
       <div class="logo-text">Book<span>arr</span></div>
     </div>
     <nav id="nav">
-      <a href="#/overview" data-nav="overview"><span class="nav-ico">▦</span> Übersicht</a>
-      <a href="#/books" data-nav="books"><span class="nav-ico">📖</span> Bücher</a>
-      <a href="#/authors" data-nav="authors"><span class="nav-ico">✒️</span> Autoren</a>
-      <a href="#/series" data-nav="series"><span class="nav-ico">🔗</span> Serien</a>
-      <a href="#/wanted" data-nav="wanted"><span class="nav-ico">⏳</span> Wanted <span id="nav-wanted-count" class="nav-count"></span></a>
-      <a href="#/activity" data-nav="activity"><span class="nav-ico">⇅</span> Aktivität</a>
-      <a href="#/settings" data-nav="settings"><span class="nav-ico">⚙</span> Einstellungen</a>
-      <a href="#/system" data-nav="system"><span class="nav-ico">🖥</span> System</a>
+      <a href="#/overview" data-nav="overview"><span class="nav-ico">▦</span><span data-i18n="nav.overview">Übersicht</span></a>
+      <a href="#/books" data-nav="books"><span class="nav-ico">📖</span><span data-i18n="nav.books">Bücher</span></a>
+      <a href="#/authors" data-nav="authors"><span class="nav-ico">✒️</span><span data-i18n="nav.authors">Autoren</span></a>
+      <a href="#/series" data-nav="series"><span class="nav-ico">🔗</span><span data-i18n="nav.series">Serien</span></a>
+      <a href="#/wanted" data-nav="wanted"><span class="nav-ico">⏳</span><span data-i18n="nav.wanted">Wanted</span> <span id="nav-wanted-count" class="nav-count"></span></a>
+      <a href="#/activity" data-nav="activity"><span class="nav-ico">⇅</span><span data-i18n="nav.activity">Aktivität</span></a>
+      <a href="#/settings" data-nav="settings"><span class="nav-ico">⚙</span><span data-i18n="nav.settings">Einstellungen</span></a>
+      <a href="#/system" data-nav="system"><span class="nav-ico">🖥</span><span data-i18n="nav.system">System</span></a>
     </nav>
     <div id="sidebar-status">
       <div class="conn-row"><span class="dot" id="dot-prowlarr"></span> Prowlarr</div>
@@ -36,35 +36,36 @@
     <header id="topbar">
       <div id="page-title">Übersicht</div>
       <div class="top-actions">
-        <button class="btn" id="btn-search" title="Bücher & Autoren suchen">🔍 Suche</button>
-        <button class="btn" id="btn-wanted-search" title="Jetzt nach allen Wanted-Büchern suchen">⏳ Wanted-Suche</button>
-        <button class="btn" id="btn-sync-all" title="Überwachte Autoren & Serien aktualisieren">🔄 Sync</button>
+        <button class="btn" id="btn-search" title="🔍"><span data-i18n="common.search">Suche</span></button>
+        <button class="btn" id="btn-wanted-search" title="⏳"><span data-i18n="topbar.wanted_search">Wanted-Suche</span></button>
+        <button class="btn" id="btn-sync-all" title="🔄"><span data-i18n="topbar.sync">Sync</span></button>
+        <button class="btn primary" id="btn-lang" title="Language">DE</button>
       </div>
     </header>
     <div id="content"></div>
   </main>
 </div>
 
-<!-- Global-Suche Modal -->
+<!-- global search modal -->
 <div id="search-modal" class="modal hidden">
   <div class="modal-box modal-lg">
     <div class="modal-head">
-      <h2>Suche</h2>
+      <h2 data-i18n="common.search">Suche</h2>
       <button class="modal-close" data-close="search-modal">✕</button>
     </div>
     <div class="search-input-row">
-      <input type="text" id="global-search-input" placeholder="Titel oder Autor … (Enter)" autocomplete="off">
+      <input type="text" id="global-search-input" data-i18n-placeholder="search.placeholder" placeholder="Titel oder Autor … (Enter)" autocomplete="off">
       <div class="seg" id="search-type-seg">
-        <button class="seg-btn active" data-type="all">Alle</button>
-        <button class="seg-btn" data-type="author">Autoren</button>
-        <button class="seg-btn" data-type="book">Bücher</button>
+        <button class="seg-btn active" data-type="all" data-i18n="search.type_all">Alle</button>
+        <button class="seg-btn" data-type="author" data-i18n="search.type_author">Autoren</button>
+        <button class="seg-btn" data-type="book" data-i18n="search.type_book">Bücher</button>
       </div>
     </div>
     <div id="search-results" class="search-results"></div>
   </div>
 </div>
 
-<!-- Buch-Detail Modal -->
+<!-- book detail modal -->
 <div id="book-modal" class="modal hidden">
   <div class="modal-box modal-lg">
     <div class="modal-head">
@@ -75,7 +76,7 @@
   </div>
 </div>
 
-<!-- Konfig Modal -->
+<!-- config modal -->
 <div id="config-modal" class="modal hidden">
   <div class="modal-box modal-sm">
     <div class="modal-head">

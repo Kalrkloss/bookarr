@@ -1,4 +1,4 @@
-"""Bookarr — Datenbank (SQLite, WAL)."""
+"""Bookarr — database (SQLite, WAL)."""
 import json
 import os
 import sqlite3
@@ -165,7 +165,7 @@ def _seed_defaults():
     _conn.commit()
 
 
-# ---------- generische Helfer ----------
+# ---------- generic helpers ----------
 
 def now():
     return time.strftime("%Y-%m-%d %H:%M:%S")
@@ -214,7 +214,7 @@ def log_event(level, source, message):
     ex("INSERT INTO events(level, source, message, time) VALUES(?,?,?,?)",
        (level, source, message, now()))
     if level in ("warn", "error"):
-        # nur die letzten 500 Events behalten
+        # keep only the last 500 events
         ex("DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT 500)")
 
 
@@ -250,7 +250,7 @@ _LANG_MAP = {
 
 
 def lang_code(code):
-    """Open-Library-Sprachcodes (ISO 639-2) auf 2-Buchstaben-Codes normalisieren."""
+    """Normalize Open Library language codes (ISO 639-2) to two-letter codes."""
     c = (code or "").strip().lower()
     if not c:
         return ""

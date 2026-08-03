@@ -1,12 +1,12 @@
-"""Bookarr — IRC-Suche + DCC-Download (irchighway #ebooks Protokoll).
+"""Bookarr — IRC search + DCC download (irchighway #ebooks protocol).
 
 Basierend auf den auf diesem Server verifizierten LazyLibrarian-Patterns:
-- SSL auf 6697 (Plaintext wird von irchighway gebannt), ssl_verify=False
-- Suche: "@search <titel>" im Channel, Bots antworten mit "!botname <titel> ::INFO:: <size>"
-- Download: "!botname <exakter Titel> ::INFO:: <size>" im Channel posten
+- SSL on 6697 (plaintext is banned by irchighway), ssl_verify=False
+- Search: "@search <title>" in the channel, bots reply with "!botname <title> ::INFO:: <size>"
+- Download: post "!botname <exact title> ::INFO:: <size>" in the channel
   (NICHT per Privatnachricht — Bots antworten dann nur mit FSN/SearchList)
 - DCC SEND: CTCP empfangen, zum Peer verbinden, Datei schreiben, Ack senden
-- Etikette: nur EIN Bot-Action gleichzeitig (globaler Lock), Mindestabstände
+- Etiquette: only ONE bot action at a time (global lock), minimum gaps
 """
 import logging
 import os
@@ -149,7 +149,7 @@ class IrcSession(threading.Thread):
 
 
 def _parse_offer(text):
-    """Bot-Angebot aus '@search'-Antwort: '!botname <titel> ::INFO:: <size>' (Größe optional)."""
+    """Bot offer from an '@search' reply: '!botname <title> ::INFO:: <size>' (size optional)."""
     m = re.search(r"^!(\S+)\s+(.+?)(?:\s*::INFO::\s*([\d.]+[KMGT]?B?))?\s*$", text.strip())
     if not m:
         return None
@@ -175,7 +175,7 @@ def _title_match(a, b, threshold=85):
 
 class IrcSearch:
     """@search im Channel; Bots antworten per DCC mit einer Ergebnis-ZIP.
-    Zusätzlich werden !botname-Zeilen im Channel als Fallback gesammelt."""
+    Additionally, !botname lines in the channel are collected as a fallback."""
 
     def __init__(self, term, cfg):
         self.term = term
@@ -192,7 +192,7 @@ class IrcSearch:
         self._s._send(f"JOIN {self.cfg['channel']}\r\n")
         time.sleep(2)
         self._send_search()
-        # erneuter Versuch nach 60 s (Bots antworten unregelmäßig)
+        # retry after 60 s (bots reply irregularly)
         self._retry_timer = threading.Timer(60, self._send_search)
         self._retry_timer.start()
 
@@ -288,7 +288,7 @@ class IrcSearch:
             self.done.wait(timeout=self.cfg["searchtimeout"])
             self._s.stop()
             _last_search = time.time()
-        # nur relevante Angebote behalten (Broadcasts anderer Suchen filtern)
+        # keep only relevant offers (filter broadcasts of other searches)
         term = _title_norm(self.term)
         relevant = []
         for o in self.offers:
@@ -309,7 +309,7 @@ class IrcSearch:
 
 
 class IrcDownload:
-    """Fragt nacheinander die anbietenden Bots an und empfängt per DCC."""
+    """Asks the offering bots one after another and receives via DCC."""
 
     def __init__(self, cfg, sources, dest_dir):
         self.cfg = cfg
@@ -375,7 +375,7 @@ class IrcDownload:
         except Exception as e:
             self._file.close()
             os.remove(path)
-            self._fail(f"DCC-Verbindung fehlgeschlagen: {e}")
+            self._fail(f"DCC connection failed: {e}")
             return
         self.result["path"] = path
         threading.Thread(target=self._receive, daemon=True).start()
@@ -390,7 +390,7 @@ class IrcDownload:
                     return
                 self._file.write(data)
                 self._received += len(data)
-                # DCC-Ack (4 Bytes big-endian) — Bots warten darauf vor dem nächsten Chunk
+                # DCC ack (4 bytes big-endian) — bots wait for it before the next chunk
                 try:
                     self._peer.sendall(struct.pack("!I", self._received))
                 except Exception:
@@ -400,9 +400,9 @@ class IrcDownload:
             self.result["bytes"] = self._received
             self._finish()
         except socket.timeout:
-            self._fail("DCC-Timeout")
+            self._fail("DCC timeout")
         except Exception as e:
-            self._fail(f"DCC-Fehler: {e}")
+            self._fail(f"DCC error: {e}")
         finally:
             try:
                 if self._peer:
@@ -412,7 +412,7 @@ class IrcDownload:
 
     def _fail(self, msg):
         self.result["error"] = msg
-        log.warning("IRC-Download fehlgeschlagen: %s", msg)
+        log.warning("IRC download failed: %s", msg)
         try:
             if self._file and not self._file.closed:
                 self._file.close()
@@ -453,10 +453,10 @@ def _ip_quad(addr):
         return addr
 
 
-# ---------- öffentliche API ----------
+# ---------- public API ----------
 
 def search_irc(title):
-    """Suche nach einem Titel im IRC. Gibt Angebotsliste zurück."""
+    """Search IRC for a title. Returns a list of offers."""
     if not irc_configured():
         return []
     cfg = _settings()
@@ -464,10 +464,10 @@ def search_irc(title):
         s = IrcSearch(title, cfg)
         s.run()
     except Exception as e:
-        db.log_event("error", "irc", f"IRC-Suche fehlgeschlagen: {e}")
+        db.log_event("error", "irc", f"IRC search failed: {e}")
         return []
     if s.error:
-        db.log_event("error", "irc", f"IRC-Suche fehlgeschlagen: {s.error}")
+        db.log_event("error", "irc", f"IRC search failed: {s.error}")
     offers = s.offers[: cfg["max_bots"]]
     return [{"source": "irc", "indexer": "IRC", "title": o["title"], "size": o["size"],
              "bot": o["bot"]} for o in offers]
@@ -476,10 +476,10 @@ def search_irc(title):
 def download_irc(sources, dest_dir):
     """IRC-Download. sources = Liste mit bot/title/size. Gibt (ok, path, error)."""
     if not irc_configured() or not sources:
-        return False, None, "Keine IRC-Quellen konfiguriert"
+        return False, None, "No IRC sources configured"
     cfg = _settings()
     d = IrcDownload(cfg, sources, dest_dir)
     d.run()
     if d.result["ok"]:
         return True, d.result["path"], None
-    return False, None, d.result.get("error", "Unbekannter Fehler")
+    return False, None, d.result.get("error", "Unknown error")

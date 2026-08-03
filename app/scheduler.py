@@ -1,4 +1,4 @@
-"""Bookarr — Hintergrund-Scheduler: Wanted-Suche, Monitoring, Queue-Sync."""
+"""Bookarr — background scheduler: wanted search, monitoring, queue sync."""
 import logging
 import threading
 import time
@@ -19,7 +19,7 @@ _state = {"running": False, "loop": "idle", "last_wanted": None, "last_sync": No
 
 def start():
     _stop.clear()
-    # nach einem Crash hängengebliebene Status zurücksetzen
+    # reset statuses stuck after a crash
     db.ex("UPDATE wanted SET status='wanted' WHERE status IN ('searching','found')")
     threading.Thread(target=_wanted_loop, name="wanted-loop", daemon=True).start()
     threading.Thread(target=_monitor_loop, name="monitor-loop", daemon=True).start()
@@ -30,12 +30,12 @@ def start():
 
 
 def _resume_nzb_downloads():
-    """Nach einem Neustart laufende NZB-Downloads weiter überwachen."""
+    """Keep watching in-flight NZB downloads after a restart."""
     for d in db.q("SELECT * FROM downloads WHERE status='snatched'"):
         if d["book_id"] and d["nzb_url"]:
             threading.Thread(target=library._nzb_completion_worker,
                              args=(d["id"], d["book_id"]), daemon=True).start()
-            log.info("NZB-Überwachung fortgesetzt: download #%s", d["id"])
+            log.info("NZB watch resumed: download #%s", d["id"])
 
 
 def stop():
@@ -54,7 +54,7 @@ def _ts(ts_str):
         return None
 
 
-# ---------------- Wanted-Suche ----------------
+# ---------------- wanted search ----------------
 
 def _wanted_loop():
     while not _stop.is_set():
@@ -93,13 +93,13 @@ def _process_wanted_due(force=False):
 
 
 def _search_and_download(book):
-    db.log_event("info", "wanted", f"Suche nach '{book['title']}' …")
+    db.log_event("info", "wanted", f"Searching for '{book["title"]}' …")
     results = library.search_downloads(book)
     if not results:
         db.ex("UPDATE wanted SET status='wanted' WHERE book_id=?", (book["id"],))
-        db.log_event("info", "wanted", f"'{book['title']}': keine Treffer")
+        db.log_event("info", "wanted", f"'{book["title"]}': no results")
         return
-    # besten Treffer wählen: IRC nur, wenn keine NZB da (NZB zuverlässiger)
+    # pick the best hit: IRC only when no NZB is available (NZB is more reliable)
     nzb = [r for r in results if r["source"] == "newznab"]
     irc = [r for r in results if r["source"] == "irc"]
     if nzb:
@@ -113,12 +113,12 @@ def _search_and_download(book):
 
 
 def search_wanted_now():
-    """Manuell ausgelöste Wanted-Suche (läuft im Hintergrund, ignoriert Intervalle)."""
+    """Manually triggered wanted search (runs in the background, ignores intervals)."""
     threading.Thread(target=lambda: _process_wanted_due(force=True), daemon=True).start()
     return True
 
 
-# ---------------- Autor-/Serien-Monitoring ----------------
+# ---------------- author/series monitoring ----------------
 
 def _monitor_loop():
     while not _stop.is_set():
@@ -144,7 +144,7 @@ def _process_monitors():
             try:
                 library.sync_author(a["id"])
             except Exception as e:
-                db.log_event("error", "monitor", f"Sync '{a['name']}' fehlgeschlagen: {e}")
+                db.log_event("error", "monitor", f"Sync '{a["name"]}' failed: {e}")
             finally:
                 _state.pop("current_sync", None)
         for s in db.q("SELECT * FROM series WHERE monitor=1"):
@@ -156,7 +156,7 @@ def _process_monitors():
             try:
                 library.sync_series(s["id"])
             except Exception as e:
-                db.log_event("error", "monitor", f"Sync Serie '{s['name']}' fehlgeschlagen: {e}")
+                db.log_event("error", "monitor", f"Series sync '{s["name"]}' failed: {e}")
             finally:
                 _state.pop("current_sync", None)
         _state["loop"] = "idle"
@@ -170,7 +170,7 @@ def sync_all_now():
     return True
 
 
-# ---------------- Queue-Sync (Fortschritt aus SABnzbd) ----------------
+# ---------------- queue sync (progress from SABnzbd) ----------------
 
 def _queue_loop():
     while not _stop.is_set():
