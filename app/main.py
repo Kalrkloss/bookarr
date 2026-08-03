@@ -8,7 +8,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -40,9 +40,21 @@ app = FastAPI(title="Bookarr", version="1.0.0", lifespan=lifespan)
 
 # ---------------- static frontend ----------------
 
+_ASSET_TAGS = ("static/style.css", "static/vendor/jszip.min.js",
+               "static/vendor/epub.min.js", "static/app.js")
+
+
 @app.get("/")
 def index():
-    return FileResponse(STATIC_DIR / "index.html")
+    """Serve index.html with cache-busting version params on all static
+    assets (mtime-based), so browsers always pick up updated JS/CSS."""
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    for asset in _ASSET_TAGS:
+        p = STATIC_DIR / asset[len("static/"):]
+        if p.exists():
+            v = int(p.stat().st_mtime)
+            html = html.replace(f'"{asset}"', f'"{asset}?v={v}"')
+    return HTMLResponse(html)
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
