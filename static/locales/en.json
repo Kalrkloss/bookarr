@@ -281,6 +281,12 @@
     "wanted_search": "Wanted search",
     "sync": "Sync"
   },
+  "table": {
+    "search": "Search…",
+    "all": "All",
+    "none": "None",
+    "blank": "(blank)"
+  },
   "lang": {
     "name": "EN",
     "switch": "Language: {lang}",

@@ -316,6 +316,40 @@ tr.clickable { cursor: pointer; }
 .switch-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .switch-row .sw-label { flex: 1; }
 
+/* ---------- Sortable / filterable tables (excel style) ---------- */
+th.sortable { cursor: pointer; user-select: none; }
+.th-sort { color: inherit; text-decoration: none; }
+.th-sort:hover { color: var(--accent-2); }
+.sort-ind { color: var(--accent); font-size: 10px; }
+.col-filter {
+  display: inline-block; margin-left: 5px; padding: 0 4px;
+  color: var(--muted); cursor: pointer; border-radius: 3px; font-size: 11px;
+}
+.col-filter:hover { color: var(--text); background: var(--panel-2); }
+.col-filter.active { color: var(--accent-2); background: var(--panel-2); }
+.col-filter-popup {
+  position: fixed; z-index: 120; width: 220px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  padding: 8px;
+}
+.col-filter-popup input[type="text"] {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  color: var(--text); border-radius: 4px; padding: 5px 8px; font-size: 12px;
+  margin-bottom: 6px;
+}
+.col-filter-popup input[type="text"]:focus { outline: none; border-color: var(--accent); }
+#cf-options { max-height: 220px; overflow-y: auto; }
+#cf-options label {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 12px;
+}
+#cf-options label:hover { background: var(--panel); }
+#cf-options input[type="checkbox"] { accent-color: var(--accent); }
+#cf-options .cf-count { margin-left: auto; color: var(--muted); font-size: 11px; }
+.cf-actions { display: flex; gap: 6px; margin-top: 6px; border-top: 1px solid var(--border); padding-top: 6px; }
+.cf-actions .btn { flex: 1; padding: 3px 6px; font-size: 11px; }
+
 /* ---------- Dropdown (language switcher) ---------- */
 .dropdown { position: relative; display: inline-block; }
 .dropdown-menu {

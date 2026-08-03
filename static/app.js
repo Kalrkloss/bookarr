@@ -185,6 +185,160 @@ function debounce(fn, ms) {
   let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
 
+/* ============ excel-style tables: sorting + column filters ============ */
+const TABLE_STATES = {};   // tableId -> {sortKey, sortDir, sortType, filters:{col:Set}}
+const TABLE_REFRESH = {};  // tableId -> () => re-render the table container
+const TABLE_ROWS = {};     // tableId -> () => raw rows
+
+function tableState(id) {
+  if (!TABLE_STATES[id]) {
+    TABLE_STATES[id] = { sortKey: null, sortDir: "asc", sortType: "text", filters: {} };
+  }
+  return TABLE_STATES[id];
+}
+
+function registerTable(id, refreshFn, rowsFn) {
+  TABLE_REFRESH[id] = refreshFn;
+  TABLE_ROWS[id] = rowsFn;
+}
+
+function colValues(rows, col) {
+  const set = new Set();
+  for (const r of rows) set.add(String(r[col] ?? ""));
+  return [...set].sort((a, b) => a.localeCompare(b, "de"));
+}
+
+function sortRows(rows, key, dir, type, columns) {
+  if (!key) return rows;
+  const mul = dir === "desc" ? -1 : 1;
+  const colDef = (columns || []).find(c => c.key === key);
+  return [...rows].sort((a, b) => {
+    let va, vb;
+    if (colDef && colDef.sortValue) { va = colDef.sortValue(a); vb = colDef.sortValue(b); }
+    else { va = a[key]; vb = b[key]; }
+    if (type === "number") { va = Number(va) || 0; vb = Number(vb) || 0; }
+    else if (type === "date") { va = String(va || ""); vb = String(vb || ""); }
+    else { va = String(va ?? "").toLowerCase(); vb = String(vb ?? "").toLowerCase(); }
+    if (va < vb) return -1 * mul;
+    if (va > vb) return 1 * mul;
+    return 0;
+  });
+}
+
+function applyFilters(rows, filters) {
+  let out = rows;
+  for (const [col, values] of Object.entries(filters)) {
+    if (!values || values.size === 0) continue;
+    out = out.filter(r => values.has(String(r[col] ?? "")));
+  }
+  return out;
+}
+
+function thSort(col, id, st) {
+  if (col.sortable === false) return `<span>${col.label}</span>`;
+  const ind = st.sortKey === col.key ? (st.sortDir === "asc" ? " ▲" : " ▼") : "";
+  return `<a href="#" class="th-sort" data-table="${id}" data-col="${col.key}" data-type="${col.type || "text"}">${col.label}${ind ? `<span class="sort-ind">${ind}</span>` : ""}</a>`;
+}
+
+function thFilter(col, id, st) {
+  if (col.filterable === false) return "";
+  const active = st.filters[col.key] && st.filters[col.key].size > 0;
+  return `<span class="col-filter ${active ? "active" : ""}" data-table="${id}" data-col="${col.key}" title="Filter">▾</span>`;
+}
+
+function tableHeader(columns, id) {
+  const st = tableState(id);
+  return `<thead><tr>` + columns.map(col => {
+    const sortable = col.sortable !== false;
+    return `<th${sortable ? ' class="sortable"' : ""} data-col="${col.key}">${thSort(col, id, st)}${thFilter(col, id, st)}</th>`;
+  }).join("") + `</tr></thead>`;
+}
+
+/* sorting + filter interactions (event delegation) */
+document.addEventListener("click", e => {
+  const s = e.target.closest(".th-sort");
+  if (s) {
+    e.preventDefault();
+    const id = s.dataset.table, col = s.dataset.col, type = s.dataset.type || "text";
+    const st = tableState(id);
+    if (st.sortKey === col) st.sortDir = st.sortDir === "asc" ? "desc" : "asc";
+    else { st.sortKey = col; st.sortDir = "asc"; st.sortType = type; }
+    if (TABLE_REFRESH[id]) TABLE_REFRESH[id]();
+    return;
+  }
+  const cf = e.target.closest(".col-filter");
+  if (cf) { e.stopPropagation(); openColFilter(cf); }
+});
+
+let _cfTable = null, _cfCol = null, _cfAllValues = [];
+
+function openColFilter(icon) {
+  _cfTable = icon.dataset.table;
+  _cfCol = icon.dataset.col;
+  const rows = TABLE_ROWS[_cfTable] ? TABLE_ROWS[_cfTable]() : [];
+  _cfAllValues = colValues(rows, _cfCol);
+  const st = tableState(_cfTable);
+  const sel = st.filters[_cfCol] || new Set();
+  const rect = icon.getBoundingClientRect();
+  const popup = document.getElementById("col-filter-popup");
+  popup.style.left = Math.min(rect.left, window.innerWidth - 235) + "px";
+  popup.style.top = (rect.bottom + 4) + "px";
+  popup.classList.remove("hidden");
+  document.getElementById("cf-search").value = "";
+  renderCfOptions(sel, "");
+  document.getElementById("cf-search").focus();
+}
+
+function renderCfOptions(sel, query) {
+  const box = document.getElementById("cf-options");
+  const q = query.toLowerCase();
+  const vals = _cfAllValues.filter(v => !q || v.toLowerCase().includes(q));
+  if (!vals.length) {
+    box.innerHTML = `<div class="muted" style="padding:6px;font-size:12px">—</div>`;
+    return;
+  }
+  const rows = TABLE_ROWS[_cfTable] ? TABLE_ROWS[_cfTable]() : [];
+  box.innerHTML = vals.map(v => {
+    const checked = sel.has(v) ? "checked" : "";
+    const count = rows.filter(r => String(r[_cfCol] ?? "") === v).length;
+    const label = v === "" ? t("table.blank") : v;
+    return `<label><input type="checkbox" value="${esc(v)}" ${checked}> <span>${esc(label)}</span><span class="cf-count">${count}</span></label>`;
+  }).join("");
+}
+
+document.getElementById("cf-search").addEventListener("input", e => {
+  const sel = tableState(_cfTable).filters[_cfCol] || new Set();
+  renderCfOptions(sel, e.target.value);
+});
+document.getElementById("cf-options").addEventListener("change", e => {
+  const cb = e.target.closest("input[type=checkbox]");
+  if (!cb || !_cfTable) return;
+  const st = tableState(_cfTable);
+  if (!st.filters[_cfCol]) st.filters[_cfCol] = new Set();
+  const sel = st.filters[_cfCol];
+  if (cb.checked) sel.add(cb.value); else sel.delete(cb.value);
+  if (sel.size === 0) delete st.filters[_cfCol];
+  if (TABLE_REFRESH[_cfTable]) TABLE_REFRESH[_cfTable]();
+});
+document.getElementById("cf-all").addEventListener("click", () => {
+  const st = tableState(_cfTable);
+  st.filters[_cfCol] = new Set(_cfAllValues);
+  if (TABLE_REFRESH[_cfTable]) TABLE_REFRESH[_cfTable]();
+  renderCfOptions(st.filters[_cfCol], document.getElementById("cf-search").value);
+});
+document.getElementById("cf-none").addEventListener("click", () => {
+  const st = tableState(_cfTable);
+  delete st.filters[_cfCol];
+  if (TABLE_REFRESH[_cfTable]) TABLE_REFRESH[_cfTable]();
+  renderCfOptions(new Set(), document.getElementById("cf-search").value);
+});
+document.addEventListener("click", e => {
+  const popup = document.getElementById("col-filter-popup");
+  if (!popup || popup.classList.contains("hidden")) return;
+  if (e.target.closest("#col-filter-popup") || e.target.closest(".col-filter")) return;
+  popup.classList.add("hidden");
+});
+
 /* ============ router ============ */
 const routes = {
   "overview": pageOverview,
@@ -396,6 +550,9 @@ async function pageOverview(content) {
   const d = await api("api/overview");
   const st = await api("api/status");
   const c = st.counts;
+  let ovWanted = d.wanted, ovDl = d.active, ovSab = d.sab_queue;
+  const WID = "wanted-ov", DID = "downloads-ov", SID = "sab-queue";
+
   content.innerHTML = `
     <div class="stat-grid">
       ${statCard(c.books, t("overview.stat_books"))}
@@ -408,19 +565,38 @@ async function pageOverview(content) {
     <div class="panel">
       <div class="panel-head"><span>${t("overview.panel_wanted")}</span>
         <button class="btn small" id="ov-wanted-search">${t("overview.search_now")}</button></div>
-      <div class="panel-body">${d.wanted.length ? wantedTable(d.wanted) : `<div class="empty">${esc(t("overview.empty_wanted"))}</div>`}</div>
+      <div class="panel-body" id="ov-wanted-box"></div>
     </div>
     <div class="panel">
       <div class="panel-head"><span>${t("overview.panel_downloads")}</span></div>
-      <div class="panel-body">
-        ${d.active.length ? downloadsTable(d.active) : `<div class="empty">${esc(t("overview.empty_downloads"))}</div>`}
-        ${d.sab_queue.length ? `<div style="margin-top:14px"><div class="muted" style="margin-bottom:6px;font-size:12px;text-transform:uppercase">${esc(t("overview.sab_queue"))}</div>${sabTable(d.sab_queue)}</div>` : ""}
+      <div class="panel-body" id="ov-dl-box">
+        <div id="ov-dl-table"></div>
+        <div id="ov-sab-box" style="margin-top:14px"></div>
       </div>
     </div>
     <div class="panel">
       <div class="panel-head"><span>${t("overview.panel_events")}</span></div>
       <div class="panel-body">${eventsFeed(d.events)}</div>
     </div>`;
+
+  const renderWanted = () => {
+    document.getElementById("ov-wanted-box").innerHTML =
+      ovWanted.length ? wantedTable(ovWanted, WID) : `<div class="empty">${esc(t("overview.empty_wanted"))}</div>`;
+  };
+  const renderDl = () => {
+    document.getElementById("ov-dl-table").innerHTML =
+      ovDl.length ? downloadsTable(ovDl, DID) : `<div class="empty">${esc(t("overview.empty_downloads"))}</div>`;
+    const sabBox = document.getElementById("ov-sab-box");
+    sabBox.innerHTML = ovSab.length
+      ? `<div class="muted" style="margin-bottom:6px;font-size:12px;text-transform:uppercase">${esc(t("overview.sab_queue"))}</div>${sabTable(ovSab, SID)}`
+      : "";
+  };
+  renderWanted();
+  renderDl();
+  registerTable(WID, renderWanted, () => ovWanted);
+  registerTable(DID, renderDl, () => ovDl);
+  registerTable(SID, renderDl, () => ovSab);
+
   document.getElementById("ov-wanted-search").addEventListener("click", async () => {
     try { await api("api/wanted/search", { method: "POST" }); toast(t("toast.wanted_search_started"), "success"); }
     catch (e) { toast(e.message, "error"); }
@@ -435,10 +611,11 @@ async function pageOverview(content) {
       document.querySelectorAll(".stat-card .stat-value").forEach((el, i) => {
         el.textContent = [c2.books, c2.have, c2.wanted, c2.authors, c2.series, c2.active_downloads][i];
       });
-      const wantBox = document.querySelectorAll(".panel")[0].querySelector(".panel-body");
-      wantBox.innerHTML = d2.wanted.length ? wantedTable(d2.wanted) : `<div class="empty">${esc(t("overview.empty_wanted"))}</div>`;
-      const dlBox = document.querySelectorAll(".panel")[1].querySelector(".panel-body");
-      dlBox.innerHTML = d2.active.length ? downloadsTable(d2.active) : `<div class="empty">${esc(t("overview.empty_downloads"))}</div>`;
+      ovWanted = d2.wanted;
+      ovDl = d2.active;
+      ovSab = d2.sab_queue;
+      renderWanted();
+      renderDl();
     } catch (e) {}
   }, 8000);
 }
@@ -447,51 +624,111 @@ function statCard(v, l) {
   return `<div class="stat-card"><div class="stat-value">${v}</div><div class="stat-label">${l}</div></div>`;
 }
 
-function wantedTable(wanted) {
-  return `<table class="data">
-    <thead><tr><th></th><th>${t("common.title")}</th><th>${t("common.author")}</th><th>${t("common.language")}</th><th>${t("common.published")}</th><th>${t("common.interval")}</th><th>${t("common.last_search")}</th><th style="text-align:right">${t("common.action")}</th></tr></thead>
-    <tbody>
-      ${wanted.map(w => `<tr>
-        <td class="t-cover">${coverImg(w.cover_url)}</td>
-        <td><b>${esc(w.title)}</b></td>
-        <td class="muted">${esc(w.author_name || "")}</td>
-        <td>${w.language ? `<span class="lang-tag">${esc(w.language)}</span>` : "—"}</td>
-        <td class="${isFuture(w.publish_date) ? "future" : ""}">${fmtDate(w.publish_date)}${isFuture(w.publish_date) ? " ⏳" : ""}</td>
-        <td>${w.interval_hours} h</td>
-        <td class="muted">${fmtDate(w.last_search) === "—" ? t("common.never") : esc(w.last_search)}</td>
-        <td><div class="row-actions">
-          <button class="btn small" data-act="book-sources" data-id="${w.id}" title="${t("common.search_sources")}">🔍</button>
-          <button class="btn small" data-act="book-wanted" data-id="${w.id}" data-w="0" title="${t("book.wanted_remove")}">✓</button>
-          <button class="btn small danger" data-act="book-del" data-id="${w.id}" title="${t("common.delete")}">✕</button>
-        </div></td>
-      </tr>`).join("")}
-    </tbody></table>`;
+function wantedColumns() {
+  return [
+    { key: "_cover", label: "", sortable: false, filterable: false,
+      tdAttrs: () => 'class="t-cover"', render: w => coverImg(w.cover_url) },
+    { key: "title", label: t("common.title"),
+      render: w => `<b>${esc(w.title)}</b>` },
+    { key: "author_name", label: t("common.author"),
+      render: w => `<span class="muted">${esc(w.author_name || "")}</span>` },
+    { key: "language", label: t("common.language"),
+      render: w => w.language ? `<span class="lang-tag">${esc(w.language)}</span>` : "—" },
+    { key: "publish_date", label: t("common.published"), type: "date",
+      sortValue: w => String(w.publish_date || "").match(/\d{4}/)?.[0] || "",
+      render: w => `<span class="${isFuture(w.publish_date) ? "future" : ""}">${fmtDate(w.publish_date)}${isFuture(w.publish_date) ? " ⏳" : ""}</span>` },
+    { key: "interval_hours", label: t("common.interval"), type: "number",
+      render: w => `${w.interval_hours} h` },
+    { key: "last_search", label: t("common.last_search"),
+      render: w => `<span class="muted">${fmtDate(w.last_search) === "—" ? t("common.never") : esc(w.last_search)}</span>` },
+    { key: "_actions", label: t("common.action"), sortable: false, filterable: false,
+      tdAttrs: () => 'style="text-align:right"',
+      render: w => `<div class="row-actions">
+        <button class="btn small" data-act="book-sources" data-id="${w.id}" title="${t("common.search_sources")}">🔍</button>
+        <button class="btn small" data-act="book-wanted" data-id="${w.id}" data-w="0" title="${t("book.wanted_remove")}">✓</button>
+        <button class="btn small danger" data-act="book-del" data-id="${w.id}" title="${t("common.delete")}">✕</button>
+      </div>` },
+  ];
 }
 
-function downloadsTable(list) {
-  return `<table class="data">
-    <thead><tr><th>${t("common.status")}</th><th>${t("common.title")}</th><th>${t("common.source")}</th><th>${t("common.progress")}</th><th>${t("common.message")}</th></tr></thead>
-    <tbody>
-      ${list.map(d => `<tr>
-        <td>${statusBadge(d.status)}</td>
-        <td>${esc(d.book_title || d.title)}</td>
-        <td class="muted">${esc(d.source)}</td>
-        <td><div class="progress" style="width:110px"><div class="bar" style="width:${d.progress || 0}%"></div></div></td>
-        <td class="muted">${esc(d.message || "")}</td>
-      </tr>`).join("")}
-    </tbody></table>`;
+function wantedTable(wanted, tableId) {
+  const columns = wantedColumns();
+  const st = tableState(tableId);
+  const filtered = applyFilters(wanted, st.filters);
+  const sorted = sortRows(filtered, st.sortKey, st.sortDir, st.sortType, columns);
+  if (!sorted.length) return `<div class="empty">${esc(t("overview.empty_wanted"))}</div>`;
+  let html = `<table class="data">` + tableHeader(columns, tableId) + `<tbody>`;
+  for (const w of sorted) {
+    html += `<tr>`;
+    for (const col of columns) {
+      html += `<td${col.tdAttrs ? " " + col.tdAttrs(w) : ""}>${col.render(w)}</td>`;
+    }
+    html += `</tr>`;
+  }
+  return html + `</tbody></table>`;
 }
 
-function sabTable(q) {
-  return `<table class="data">
-    <thead><tr><th>${t("common.title")}</th><th>${t("common.progress")}</th><th>${t("common.size")}</th><th>${t("common.speed")}</th><th>${t("common.eta")}</th></tr></thead>
-    <tbody>${q.map(s => `<tr>
-      <td>${esc(s.title)}</td>
-      <td><div class="progress" style="width:110px"><div class="bar" style="width:${s.progress || 0}%"></div></div></td>
-      <td class="muted">${esc(s.size)}</td>
-      <td class="muted">${esc(s.speed)}</td>
-      <td class="muted">${esc(s.eta)}</td>
-    </tr>`).join("")}</tbody></table>`;
+function downloadsColumns() {
+  return [
+    { key: "status", label: t("common.status"), render: d => statusBadge(d.status) },
+    { key: "book_title", label: t("common.title"),
+      render: d => esc(d.book_title || d.title) },
+    { key: "source", label: t("common.source"),
+      render: d => `<span class="muted">${esc(d.source)}</span>` },
+    { key: "progress", label: t("common.progress"), type: "number",
+      render: d => `<div class="progress" style="width:110px"><div class="bar" style="width:${d.progress || 0}%"></div></div>` },
+    { key: "message", label: t("common.message"),
+      render: d => `<span class="muted">${esc(d.message || "")}</span>` },
+  ];
+}
+
+function downloadsTable(list, tableId) {
+  const columns = downloadsColumns();
+  const st = tableState(tableId);
+  const filtered = applyFilters(list, st.filters);
+  const sorted = sortRows(filtered, st.sortKey, st.sortDir, st.sortType, columns);
+  if (!sorted.length) return `<div class="empty">${esc(t("overview.empty_downloads"))}</div>`;
+  let html = `<table class="data">` + tableHeader(columns, tableId) + `<tbody>`;
+  for (const d of sorted) {
+    html += `<tr>`;
+    for (const col of columns) {
+      html += `<td${col.tdAttrs ? " " + col.tdAttrs(d) : ""}>${col.render(d)}</td>`;
+    }
+    html += `</tr>`;
+  }
+  return html + `</tbody></table>`;
+}
+
+function sabColumns() {
+  return [
+    { key: "title", label: t("common.title"), render: s => esc(s.title) },
+    { key: "progress", label: t("common.progress"), type: "number",
+      render: s => `<div class="progress" style="width:110px"><div class="bar" style="width:${s.progress || 0}%"></div></div>` },
+    { key: "size", label: t("common.size"),
+      sortValue: s => parseFloat(String(s.size || "").replace(",", ".")) || 0,
+      render: s => `<span class="muted">${esc(s.size)}</span>` },
+    { key: "speed", label: t("common.speed"),
+      render: s => `<span class="muted">${esc(s.speed)}</span>` },
+    { key: "eta", label: t("common.eta"),
+      render: s => `<span class="muted">${esc(s.eta)}</span>` },
+  ];
+}
+
+function sabTable(q, tableId) {
+  const columns = sabColumns();
+  const st = tableState(tableId);
+  const filtered = applyFilters(q, st.filters);
+  const sorted = sortRows(filtered, st.sortKey, st.sortDir, st.sortType, columns);
+  if (!sorted.length) return `<div class="empty">${esc(t("overview.empty_downloads"))}</div>`;
+  let html = `<table class="data">` + tableHeader(columns, tableId) + `<tbody>`;
+  for (const s of sorted) {
+    html += `<tr>`;
+    for (const col of columns) {
+      html += `<td${col.tdAttrs ? " " + col.tdAttrs(s) : ""}>${col.render(s)}</td>`;
+    }
+    html += `</tr>`;
+  }
+  return html + `</tbody></table>`;
 }
 
 function eventsFeed(events) {
@@ -508,6 +745,8 @@ function eventsFeed(events) {
 async function pageBooks(content) {
   const books = await api("api/books?limit=500");
   const langs = [...new Set(books.map(b => b.language).filter(Boolean))].sort();
+  const TABLE_ID = "books-all";
+  let current = books;
   content.innerHTML = `
     <div class="books-table-actions">
       <input type="text" id="bk-q" placeholder="${t("books.filter_placeholder")}">
@@ -524,44 +763,71 @@ async function pageBooks(content) {
       <div class="spacer"></div>
       <span class="muted" id="bk-count">${t("books.count", { n: books.length })}</span>
     </div>
-    <div id="bk-table">${booksTable(books)}</div>`;
+    <div id="bk-table"></div>`;
 
+  const renderBooksTable = () => {
+    document.getElementById("bk-table").innerHTML = booksTable(current, TABLE_ID);
+  };
   const apply = () => {
     const q = document.getElementById("bk-q").value.toLowerCase();
     const st = document.getElementById("bk-status").value;
     const lg = document.getElementById("bk-lang").value;
-    const filtered = books.filter(b =>
+    current = books.filter(b =>
       (!q || (b.title || "").toLowerCase().includes(q) || (b.author_name || "").toLowerCase().includes(q)) &&
       (!st || b.status === st) && (!lg || b.language === lg));
-    document.getElementById("bk-count").textContent = t("books.count", { n: filtered.length });
-    document.getElementById("bk-table").innerHTML = booksTable(filtered);
+    document.getElementById("bk-count").textContent = t("books.count", { n: current.length });
+    renderBooksTable();
   };
+  renderBooksTable();
+  registerTable(TABLE_ID, renderBooksTable, () => current);
   document.getElementById("bk-q").addEventListener("input", debounce(apply, 200));
   document.getElementById("bk-status").addEventListener("change", apply);
   document.getElementById("bk-lang").addEventListener("change", apply);
 }
 
-function booksTable(books) {
-  if (!books.length) return `<div class="empty">${esc(t("books.empty"))}</div>`;
-  return `<table class="data">
-    <thead><tr><th></th><th>${t("common.title")}</th><th>${t("common.author")}</th><th>${t("common.series")}</th><th>${t("common.language")}</th><th>${t("common.published")}</th><th>${t("common.status")}</th><th style="text-align:right">${t("common.actions")}</th></tr></thead>
-    <tbody>
-      ${books.map(b => `<tr class="clickable" data-act="book-open" data-id="${b.id}">
-        <td class="t-cover">${coverImg(b.cover_url)}</td>
-        <td><b>${esc(b.title)}</b>${b.series_number ? `<span class="muted"> #${esc(b.series_number)}</span>` : ""}</td>
-        <td class="muted">${esc(b.author_name || "")}</td>
-        <td class="muted">${esc(b.series_name || "—")}</td>
-        <td>${b.language ? `<span class="lang-tag">${esc(b.language)}</span>` : "—"}</td>
-        <td class="${isFuture(b.publish_date) ? "future" : ""}">${fmtDate(b.publish_date)}${isFuture(b.publish_date) ? " ⏳" : ""}</td>
-        <td data-status-badge>${statusBadge(b.status)}</td>
-        <td><div class="row-actions">
-          <button class="btn small" data-act="book-sources" data-id="${b.id}" title="${t("common.search_sources")}">🔍</button>
-          ${b.wanted ? `<button class="btn small" data-act="book-wanted" data-id="${b.id}" data-w="0" title="${t("book.wanted_remove")}">✓</button>`
-                     : `<button class="btn small" data-act="book-wanted" data-id="${b.id}" data-w="1" title="${t("book.wanted_add")}">⏳</button>`}
-          <button class="btn small danger" data-act="book-del" data-id="${b.id}" title="${t("common.delete")}">✕</button>
-        </div></td>
-      </tr>`).join("")}
-    </tbody></table>`;
+function booksColumns() {
+  return [
+    { key: "_cover", label: "", sortable: false, filterable: false,
+      tdAttrs: () => 'class="t-cover"', render: b => coverImg(b.cover_url) },
+    { key: "title", label: t("common.title"),
+      render: b => `<b>${esc(b.title)}</b>${b.series_number ? `<span class="muted"> #${esc(b.series_number)}</span>` : ""}` },
+    { key: "author_name", label: t("common.author"),
+      render: b => `<span class="muted">${esc(b.author_name || "")}</span>` },
+    { key: "series_name", label: t("books.col_series"),
+      render: b => `<span class="muted">${esc(b.series_name || "—")}</span>` },
+    { key: "language", label: t("common.language"),
+      render: b => b.language ? `<span class="lang-tag">${esc(b.language)}</span>` : "—" },
+    { key: "publish_date", label: t("common.published"), type: "date",
+      sortValue: b => String(b.publish_date || "").match(/\d{4}/)?.[0] || "",
+      render: b => `<span class="${isFuture(b.publish_date) ? "future" : ""}">${fmtDate(b.publish_date)}${isFuture(b.publish_date) ? " ⏳" : ""}</span>` },
+    { key: "status", label: t("common.status"),
+      tdAttrs: () => 'data-status-badge', render: b => statusBadge(b.status) },
+    { key: "_actions", label: t("common.actions"), sortable: false, filterable: false,
+      tdAttrs: () => 'style="text-align:right"',
+      render: b => `<div class="row-actions">
+        <button class="btn small" data-act="book-sources" data-id="${b.id}" title="${t("common.search_sources")}">🔍</button>
+        ${b.wanted ? `<button class="btn small" data-act="book-wanted" data-id="${b.id}" data-w="0" title="${t("book.wanted_remove")}">✓</button>`
+                   : `<button class="btn small" data-act="book-wanted" data-id="${b.id}" data-w="1" title="${t("book.wanted_add")}">⏳</button>`}
+        <button class="btn small danger" data-act="book-del" data-id="${b.id}" title="${t("common.delete")}">✕</button>
+      </div>` },
+  ];
+}
+
+function booksTable(books, tableId) {
+  const columns = booksColumns();
+  const st = tableState(tableId);
+  const filtered = applyFilters(books, st.filters);
+  const sorted = sortRows(filtered, st.sortKey, st.sortDir, st.sortType, columns);
+  if (!sorted.length) return `<div class="empty">${esc(t("books.empty"))}</div>`;
+  let html = `<table class="data">` + tableHeader(columns, tableId) + `<tbody>`;
+  for (const b of sorted) {
+    html += `<tr class="clickable" data-act="book-open" data-id="${b.id}">`;
+    for (const col of columns) {
+      html += `<td${col.tdAttrs ? " " + col.tdAttrs(b) : ""}>${col.render(b)}</td>`;
+    }
+    html += `</tr>`;
+  }
+  return html + `</tbody></table>`;
 }
 
 /* ============ book detail modal ============ */
@@ -838,10 +1104,17 @@ async function pageAuthor(content, param) {
       <div class="panel-head"><span>${t("authors.books_panel", { n: d.books.length })}</span>
         <span class="muted" style="font-weight:400;font-size:12px">${d.languages.length ? t("authors.lang_filter_hint") : ""}</span>
       </div>
-      <div class="panel-body" id="author-books">
-        ${booksTable(d.books)}
-      </div>
+      <div class="panel-body" id="author-books"></div>
     </div>`;
+
+  const TABLE_ID = `author-books-${id}`;
+  let currentBooks = d.books;
+  const renderAuthorBooks = () => {
+    document.getElementById("author-books").innerHTML = booksTable(currentBooks, TABLE_ID);
+  };
+  renderAuthorBooks();
+  registerTable(TABLE_ID, renderAuthorBooks, () => currentBooks);
+  registerSeriesTables(d.series);
 
   document.getElementById("lang-chips").addEventListener("click", async e => {
     const chip = e.target.closest(".chip");
@@ -851,7 +1124,9 @@ async function pageAuthor(content, param) {
     document.querySelectorAll(".chip").forEach(c => c.classList.toggle("active", c.dataset.lang === stateAuthorLang));
     const sb = document.getElementById("series-list");
     if (sb) sb.innerHTML = d2.series.map(seriesBlock).join("");
-    document.getElementById("author-books").innerHTML = booksTable(d2.books);
+    registerSeriesTables(d2.series);
+    currentBooks = d2.books;
+    renderAuthorBooks();
     const head = document.querySelector(".panel-head span");
     head.textContent = t("authors.books_panel", { n: d2.books.length });
   });
@@ -859,7 +1134,47 @@ async function pageAuthor(content, param) {
 
 let stateAuthorLang = "";
 
+function seriesBooksColumns() {
+  return [
+    { key: "_cover", label: "", sortable: false, filterable: false,
+      tdAttrs: () => 'class="t-cover"', render: b => coverImg(b.cover_url) },
+    { key: "title", label: t("common.title"),
+      render: b => `<b>${esc(b.title)}</b>${b.series_number ? ` <span class="muted">#${esc(b.series_number)}</span>` : ""}` },
+    { key: "language", label: t("common.language"),
+      render: b => b.language ? `<span class="lang-tag">${esc(b.language)}</span>` : "—" },
+    { key: "publish_date", label: t("common.published"), type: "date",
+      sortValue: b => String(b.publish_date || "").match(/\d{4}/)?.[0] || "",
+      render: b => `<span class="${isFuture(b.publish_date) ? "future" : ""}">${fmtDate(b.publish_date)}${isFuture(b.publish_date) ? " ⏳" : ""}</span>` },
+    { key: "status", label: t("common.status"),
+      tdAttrs: () => 'data-status-badge', render: b => statusBadge(b.status) },
+    { key: "_actions", label: "", sortable: false, filterable: false,
+      tdAttrs: () => 'style="text-align:right"',
+      render: b => `<div class="row-actions">
+        <button class="btn small" data-act="book-sources" data-id="${b.id}" title="${t("common.search_sources")}">🔍</button>
+        ${b.wanted ? `<button class="btn small" data-act="book-wanted" data-id="${b.id}" data-w="0" title="${t("book.wanted_remove")}">✓</button>` : ""}
+      </div>` },
+  ];
+}
+
+function seriesBooksTable(books, tableId) {
+  const columns = seriesBooksColumns();
+  const st = tableState(tableId);
+  const filtered = applyFilters(books, st.filters);
+  const sorted = sortRows(filtered, st.sortKey, st.sortDir, st.sortType, columns);
+  if (!sorted.length) return `<tr><td class="muted">${esc(t("series.no_books"))}</td></tr>`;
+  let html = `<table class="data">` + tableHeader(columns, tableId) + `<tbody>`;
+  for (const b of sorted) {
+    html += `<tr class="clickable" data-act="book-open" data-id="${b.id}">`;
+    for (const col of columns) {
+      html += `<td${col.tdAttrs ? " " + col.tdAttrs(b) : ""}>${col.render(b)}</td>`;
+    }
+    html += `</tr>`;
+  }
+  return html + `</tbody></table>`;
+}
+
 function seriesBlock(s) {
+  const tableId = `series-${s.id}`;
   return `<div class="series-block ${stateAuthorLang ? "" : "open"}">
     <div class="series-head" data-toggle-series>
       <span class="chev">▶</span>
@@ -867,24 +1182,20 @@ function seriesBlock(s) {
       <span class="badge ${s.monitor ? "monitor-on" : "monitor-off"}">${s.monitor ? t("status.monitored") : t("status.not_monitored")}</span>
       <button class="btn small" data-act="series-monitor" data-id="${s.id}" data-mon="${s.monitor}">${s.monitor ? "⚙" : "⏰"}</button>
     </div>
-    <div class="series-body">
-      <table class="data">
-        <tbody>${s.books.length ? s.books.map(b => `
-          <tr class="clickable" data-act="book-open" data-id="${b.id}">
-            <td class="t-cover">${coverImg(b.cover_url)}</td>
-            <td><b>${esc(b.title)}</b>${b.series_number ? ` <span class="muted">#${esc(b.series_number)}</span>` : ""}</td>
-            <td>${b.language ? `<span class="lang-tag">${esc(b.language)}</span>` : "—"}</td>
-            <td class="${isFuture(b.publish_date) ? "future" : ""}">${fmtDate(b.publish_date)}${isFuture(b.publish_date) ? " ⏳" : ""}</td>
-            <td data-status-badge>${statusBadge(b.status)}</td>
-            <td><div class="row-actions">
-              <button class="btn small" data-act="book-sources" data-id="${b.id}" title="${t("common.search_sources")}">🔍</button>
-              ${b.wanted ? `<button class="btn small" data-act="book-wanted" data-id="${b.id}" data-w="0" title="${t("book.wanted_remove")}">✓</button>` : ""}
-            </div></td>
-          </tr>`).join("") : `<tr><td class="muted">${esc(t("series.no_books"))}</td></tr>`}
-        </tbody>
-      </table>
+    <div class="series-body" id="series-body-${s.id}">
+      ${seriesBooksTable(s.books, tableId)}
     </div>
   </div>`;
+}
+
+function registerSeriesTables(seriesList) {
+  for (const s of seriesList) {
+    const tableId = `series-${s.id}`;
+    registerTable(tableId, () => {
+      const body = document.getElementById(`series-body-${s.id}`);
+      if (body) body.innerHTML = seriesBooksTable(s.books, tableId);
+    }, () => s.books);
+  }
 }
 
 document.addEventListener("click", e => {
@@ -1056,34 +1367,33 @@ async function pageSeries(content) {
               <span class="badge ${s.monitor ? "monitor-on" : "monitor-off"}">${s.monitor ? t("status.monitored") : t("status.not_monitored")}</span>
               <button class="btn small" data-act="series-monitor" data-id="${s.id}" data-mon="${s.monitor}">⚙</button>
             </div>
-            <div class="series-body">
-              <table class="data"><tbody>
-                ${s.books.map(b => `<tr class="clickable" data-act="book-open" data-id="${b.id}">
-                  <td class="t-cover">${coverImg(b.cover_url)}</td>
-                  <td><b>${esc(b.title)}</b>${b.series_number ? ` <span class="muted">#${esc(b.series_number)}</span>` : ""}</td>
-                  <td>${b.language ? `<span class="lang-tag">${esc(b.language)}</span>` : "—"}</td>
-                  <td class="${isFuture(b.publish_date) ? "future" : ""}">${fmtDate(b.publish_date)}${isFuture(b.publish_date) ? " ⏳" : ""}</td>
-                  <td>${statusBadge(b.status)}</td>
-                </tr>`).join("")}
-              </tbody></table>
+            <div class="series-body" id="series-body-${s.id}">
+              ${seriesBooksTable(s.books, `series-${s.id}`)}
             </div>
           </div>`).join("") : `<div class="empty">${esc(t("series.empty"))}</div>`}
       </div>
     </div>`;
+  registerSeriesTables(allSeries);
 }
 
 /* ============ page: wanted ============ */
 async function pageWanted(content) {
   const wanted = await api("api/wanted");
+  const TABLE_ID = "wanted-list";
+  let current = wanted;
   content.innerHTML = `
     <div class="books-table-actions">
       <span class="muted">${t("wanted.searching_count", { n: wanted.length })}</span>
       <div class="spacer"></div>
       <button class="btn primary" id="wt-search">${t("wanted.search_all")}</button>
     </div>
-    <div class="panel"><div class="panel-body">
-      ${wanted.length ? wantedTable(wanted) : `<div class="empty">${esc(t("wanted.empty"))}</div>`}
-    </div></div>`;
+    <div class="panel"><div class="panel-body" id="wt-box"></div></div>`;
+  const renderWanted = () => {
+    document.getElementById("wt-box").innerHTML =
+      current.length ? wantedTable(current, TABLE_ID) : `<div class="empty">${esc(t("wanted.empty"))}</div>`;
+  };
+  renderWanted();
+  registerTable(TABLE_ID, renderWanted, () => current);
   document.getElementById("wt-search").addEventListener("click", async () => {
     try {
       await api("api/wanted/search", { method: "POST" });
@@ -1094,35 +1404,56 @@ async function pageWanted(content) {
   window.__wtTimer = setInterval(async () => {
     if (currentRoute().name !== "wanted") { clearInterval(window.__wtTimer); return; }
     try {
-      const w2 = await api("api/wanted");
-      document.querySelector(".panel-body").innerHTML = w2.length ? wantedTable(w2) : `<div class="empty">${esc(t("wanted.empty_short"))}</div>`;
+      current = await api("api/wanted");
+      renderWanted();
     } catch (e) {}
   }, 10000);
 }
 
 /* ============ page: activity ============ */
+function downloadsHistoryTable(downloads, tableId) {
+  const columns = [
+    { key: "status", label: t("common.status"), render: d => statusBadge(d.status) },
+    { key: "book_title", label: t("common.book"),
+      render: d => esc(d.book_title || d.title) },
+    { key: "source", label: t("common.source"),
+      render: d => `<span class="muted">${esc(d.source)}</span>` },
+    { key: "progress", label: t("common.progress"), type: "number",
+      render: d => `<div class="progress" style="width:100px"><div class="bar" style="width:${d.progress || 0}%"></div></div>` },
+    { key: "message", label: t("common.message"),
+      render: d => `<span class="muted">${esc(d.message || "")}</span>` },
+    { key: "added", label: t("common.date"),
+      render: d => `<span class="muted">${esc(d.added || "")}</span>` },
+    { key: "_del", label: "", sortable: false, filterable: false,
+      tdAttrs: () => 'style="text-align:right"',
+      render: d => `<button class="btn small danger" data-act="dl-del" data-id="${d.id}">✕</button>` },
+  ];
+  const st = tableState(tableId);
+  const filtered = applyFilters(downloads, st.filters);
+  const sorted = sortRows(filtered, st.sortKey, st.sortDir, st.sortType, columns);
+  if (!sorted.length) return `<div class="empty">${esc(t("activity.empty_downloads"))}</div>`;
+  let html = `<table class="data">` + tableHeader(columns, tableId) + `<tbody>`;
+  for (const d of sorted) {
+    html += `<tr>`;
+    for (const col of columns) {
+      html += `<td${col.tdAttrs ? " " + col.tdAttrs(d) : ""}>${col.render(d)}</td>`;
+    }
+    html += `</tr>`;
+  }
+  return html + `</tbody></table>`;
+}
+
 async function pageActivity(content) {
   const [downloads, events] = await Promise.all([api("api/downloads?limit=100"), api("api/events?limit=100")]);
+  const TABLE_ID = "dl-history";
+  let current = downloads;
   content.innerHTML = `
     <div class="tabs">
       <button class="active" data-tab="dl">${t("activity.tab_downloads")}</button>
       <button data-tab="ev">${t("activity.tab_events")}</button>
     </div>
     <div id="tab-dl">
-      <div class="panel"><div class="panel-body">
-        ${downloads.length ? `<table class="data">
-          <thead><tr><th>${t("common.status")}</th><th>${t("common.book")}</th><th>${t("common.source")}</th><th>${t("common.progress")}</th><th>${t("common.message")}</th><th>${t("common.date")}</th><th></th></tr></thead>
-          <tbody>${downloads.map(d => `<tr>
-            <td>${statusBadge(d.status)}</td>
-            <td>${esc(d.book_title || d.title)}</td>
-            <td class="muted">${esc(d.source)}</td>
-            <td><div class="progress" style="width:100px"><div class="bar" style="width:${d.progress || 0}%"></div></div></td>
-            <td class="muted">${esc(d.message || "")}</td>
-            <td class="muted">${esc(d.added || "")}</td>
-            <td><button class="btn small danger" data-act="dl-del" data-id="${d.id}">✕</button></td>
-          </tr>`).join("")}</tbody></table>`
-        : `<div class="empty">${esc(t("activity.empty_downloads"))}</div>`}
-      </div></div>
+      <div class="panel"><div class="panel-body" id="dl-history-box"></div></div>
     </div>
     <div id="tab-ev" class="hidden">
       <div class="books-table-actions">
@@ -1136,6 +1467,11 @@ async function pageActivity(content) {
       </div>
       <div class="panel"><div class="panel-body" id="ev-list">${eventsFeed(events)}</div></div>
     </div>`;
+  const renderHistory = () => {
+    document.getElementById("dl-history-box").innerHTML = downloadsHistoryTable(current, TABLE_ID);
+  };
+  renderHistory();
+  registerTable(TABLE_ID, renderHistory, () => current);
   document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
     document.querySelectorAll(".tabs button").forEach(x => x.classList.remove("active"));
     b.classList.add("active");

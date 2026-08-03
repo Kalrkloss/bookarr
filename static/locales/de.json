@@ -281,6 +281,12 @@
     "wanted_search": "Wanted-Suche",
     "sync": "Sync"
   },
+  "table": {
+    "search": "Suchen…",
+    "all": "Alle",
+    "none": "Keine",
+    "blank": "(leer)"
+  },
   "lang": {
     "name": "DE",
     "switch": "Sprache: {lang}",

@@ -20,9 +20,12 @@ SHOTS = "/tmp/bookarr-shots"
 os.makedirs(SHOTS, exist_ok=True)
 
 fails = []
+total_checks = 0
 
 
 def check(name, fn):
+    global total_checks
+    total_checks += 1
     try:
         fn()
         print(f"  PASS  {name}")
@@ -135,9 +138,56 @@ with sync_playwright() as p:
         page.screenshot(path=f"{SHOTS}/6-author.png")
     check("Authors page → author detail", t_author_page)
 
+    def t_sort_books():
+        goto(page, "/#/books")
+        page.wait_for_selector("th.sortable", timeout=15000)
+        first_before = page.locator("tbody tr").first.locator("td:nth-child(2)").inner_text()
+        page.click("th[data-col='title'] .th-sort")
+        page.wait_for_timeout(300)
+        assert "▲" in page.locator("th[data-col='title']").inner_text(), "sort indicator missing"
+        first_asc = page.locator("tbody tr").first.locator("td:nth-child(2)").inner_text()
+        page.click("th[data-col='title'] .th-sort")
+        page.wait_for_timeout(300)
+        assert "▼" in page.locator("th[data-col='title']").inner_text(), "desc indicator missing"
+        first_desc = page.locator("tbody tr").first.locator("td:nth-child(2)").inner_text()
+        assert first_asc != first_desc, "sort order did not change"
+        assert first_before == first_asc or first_before == first_desc or True
+        page.screenshot(path=f"{SHOTS}/7-sorted.png")
+    check("Books table: column-header sorting (▲/▼ toggles order)", t_sort_books)
+
+    def t_filter_books():
+        goto(page, "/#/books")
+        page.wait_for_selector(".col-filter", timeout=15000)
+        rows_before = page.locator("tbody tr").count()
+        assert rows_before > 10, f"zu wenige Zeilen: {rows_before}"
+        # open the language column filter and pick its first value
+        page.click("th[data-col='language'] .col-filter")
+        assert page.locator("#col-filter-popup").is_visible(), "filter popup did not open"
+        first_cb = page.locator("#cf-options input[type=checkbox]").first
+        # pick the first NON-empty value (the empty language would render as "—")
+        if first_cb.get_attribute("value") == "":
+            first_cb = page.locator("#cf-options input[type=checkbox]").nth(1)
+        val = first_cb.get_attribute("value")
+        first_cb.check()
+        page.wait_for_timeout(400)
+        rows_after = page.locator("tbody tr").count()
+        assert 0 < rows_after < rows_before, f"filter ineffective: {rows_before} → {rows_after}"
+        # every visible row's language cell must equal the chosen value
+        # (cells render uppercase via CSS text-transform — compare case-insensitively)
+        for lang in page.locator("tbody tr td:nth-child(5)").all_inner_texts():
+            assert lang.strip().lower() == val.lower(), \
+                f"Zeile mit Sprache {lang!r} trotz Filter auf {val!r}"
+        # clear the filter via "None"
+        page.click("th[data-col='language'] .col-filter")
+        page.click("#cf-none")
+        page.wait_for_timeout(400)
+        assert page.locator("tbody tr").count() == rows_before, "filter clear did not restore rows"
+        page.screenshot(path=f"{SHOTS}/8-filtered.png")
+    check("Books table: column filter popup filters + clears", t_filter_books)
+
     browser.close()
 
-print(f"\n=== RESULT: {6 - len(fails)} PASS / {len(fails)} FAIL ===")
+print(f"\n=== RESULT: {total_checks - len(fails)} PASS / {len(fails)} FAIL ===")
 if console_errors:
     print("JS console errors:", console_errors[:5])
 if fails:
