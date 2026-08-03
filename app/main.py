@@ -56,6 +56,7 @@ def api_status():
         "authors": db.q1("SELECT COUNT(*) c FROM authors")["c"],
         "books": db.q1("SELECT COUNT(*) c FROM books")["c"],
         "have": db.q1("SELECT COUNT(*) c FROM books WHERE status='have'")["c"],
+        "missing": db.q1("SELECT COUNT(*) c FROM books WHERE status='missing'")["c"],
         "wanted": db.q1("SELECT COUNT(*) c FROM wanted WHERE status='wanted'")["c"],
         "series": db.q1("SELECT COUNT(*) c FROM series")["c"],
         "active_downloads": db.q1("SELECT COUNT(*) c FROM downloads WHERE status IN ('queued','snatched','downloading')")["c"],
