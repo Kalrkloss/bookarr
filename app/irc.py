@@ -191,7 +191,16 @@ class IrcSearch:
     def on_welcome(self):
         self._s._send(f"JOIN {self.cfg['channel']}\r\n")
         time.sleep(2)
-        self._s._send(f"PRIVMSG {self.cfg['channel']} :@search {self.term}\r\n")
+        self._send_search()
+        # erneuter Versuch nach 60 s (Bots antworten unregelmäßig)
+        self._retry_timer = threading.Timer(60, self._send_search)
+        self._retry_timer.start()
+
+    def _send_search(self):
+        try:
+            self._s._send(f"PRIVMSG {self.cfg['channel']} :@search {self.term}\r\n")
+        except Exception:
+            pass
 
     def on_channel(self, nick, text):
         offer = _parse_offer(text)
@@ -286,7 +295,15 @@ class IrcSearch:
             nt = _title_norm(o["title"])
             if not nt:
                 continue
-            if term in nt or nt in term or _title_match(o["title"], self.term):
+            if term in nt or nt in term:
+                relevant.append(o)
+                continue
+            # Token-Overlap: min. ein Wort ≥ 4 Zeichen des Suchbegriffs im Titel
+            terms = {w for w in term.split() if len(w) >= 4}
+            if terms and any(w in nt for w in terms):
+                relevant.append(o)
+                continue
+            if _title_match(o["title"], self.term):
                 relevant.append(o)
         self.offers = relevant[: self.cfg["max_bots"]]
 

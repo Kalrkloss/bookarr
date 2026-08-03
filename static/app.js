@@ -1103,6 +1103,8 @@ async function pageSettings(content) {
             <div class="form-row"><label>Download-Verzeichnis (Zwischenablage)</label><input type="text" id="set-dl-dir" value="${esc(settings.download_dir)}"></div>
             <div class="form-row"><label>Bibliothek (fertige Bücher)</label><input type="text" id="set-lib-dir" value="${esc(settings.library_dir)}"></div>
           </div>
+          <div class="form-row"><label>SABnzbd-Fertigordner (falls sortiert wird)</label><input type="text" id="set-sorted-dir" value="${esc(settings.sabnzbd_sorted_dir || "")}">
+            <div class="hint">Nur nötig, wenn SABnzbd fertige Downloads in einen sortierten Ordner verschiebt (z. B. /mnt/media/Ebooks)</div></div>
         </div>
       </div>
       <div class="panel">
@@ -1185,6 +1187,7 @@ async function pageSettings(content) {
             google_books_key: document.getElementById("set-gb-key").value,
             download_dir: document.getElementById("set-dl-dir").value,
             library_dir: document.getElementById("set-lib-dir").value,
+            sabnzbd_sorted_dir: document.getElementById("set-sorted-dir").value,
             convert_enabled: document.getElementById("set-conv-on").checked ? "1" : "0",
             convert_format: document.getElementById("set-conv-fmt").value,
             wanted_search_enabled: document.getElementById("set-ws-on").checked ? "1" : "0",

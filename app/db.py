@@ -140,6 +140,7 @@ def _seed_defaults():
         "sabnzbd_url": "http://127.0.0.1:8081",
         "sabnzbd_key": "",
         "sabnzbd_category": "ebook",
+        "sabnzbd_sorted_dir": "",
         "prowlarr_url": "http://127.0.0.1:9696",
         "prowlarr_key": "",
         "prowlarr_categories": "7000,7020",
@@ -231,6 +232,31 @@ def norm_title(t):
     t = re.sub(r"[^\w\s]", "", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t
+
+
+# ISO 639-2 (Open Library) → ISO 639-1
+_LANG_MAP = {
+    "ger": "de", "eng": "en", "fre": "fr", "spa": "es", "ita": "it", "dut": "nl",
+    "por": "pt", "rus": "ru", "pol": "pl", "heb": "he", "chi": "zh", "jpn": "ja",
+    "kor": "ko", "swe": "sv", "dan": "da", "nor": "no", "fin": "fi", "tur": "tr",
+    "ara": "ar", "ukr": "uk", "hun": "hu", "ces": "cs", "cat": "ca", "srp": "sr",
+    "bel": "be", "bul": "bg", "gre": "el", "rum": "ro", "slo": "sk", "slv": "sl",
+    "hrv": "hr", "lit": "lt", "lav": "lv", "est": "et", "tha": "th", "vie": "vi",
+    "hin": "hi", "ben": "bn", "tam": "ta", "tel": "te", "mar": "mr", "urd": "ur",
+    "fas": "fa", "ind": "id", "may": "ms", "gle": "ga", "wel": "cy", "ice": "is",
+    "alb": "sq", "mkd": "mk", "geo": "ka", "arm": "hy", "aze": "az", "kaz": "kk",
+    "uzb": "uz", "mon": "mn", "lat": "la", "und": "", "mul": "", "zxx": "",
+}
+
+
+def lang_code(code):
+    """Open-Library-Sprachcodes (ISO 639-2) auf 2-Buchstaben-Codes normalisieren."""
+    c = (code or "").strip().lower()
+    if not c:
+        return ""
+    if len(c) == 2:
+        return c
+    return _LANG_MAP.get(c, c)
 
 
 def json_dump(o):

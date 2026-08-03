@@ -24,8 +24,18 @@ def start():
     threading.Thread(target=_wanted_loop, name="wanted-loop", daemon=True).start()
     threading.Thread(target=_monitor_loop, name="monitor-loop", daemon=True).start()
     threading.Thread(target=_queue_loop, name="queue-loop", daemon=True).start()
+    _resume_nzb_downloads()
     _state["running"] = True
     log.info("Scheduler gestartet")
+
+
+def _resume_nzb_downloads():
+    """Nach einem Neustart laufende NZB-Downloads weiter überwachen."""
+    for d in db.q("SELECT * FROM downloads WHERE status='snatched'"):
+        if d["book_id"] and d["nzb_url"]:
+            threading.Thread(target=library._nzb_completion_worker,
+                             args=(d["id"], d["book_id"]), daemon=True).start()
+            log.info("NZB-Überwachung fortgesetzt: download #%s", d["id"])
 
 
 def stop():

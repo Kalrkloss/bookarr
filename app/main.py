@@ -366,7 +366,7 @@ def api_add_book(body: BookAdd):
     bid = db.ex(
         "INSERT INTO books(title, norm_title, author_id, language, publish_date, isbn, ol_work_key, "
         "cover_url, status, wanted, source, added, updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (body.title, norm, author_id, body.language,
+        (body.title, norm, author_id, db.lang_code(body.language),
          f"{body.year}-01-01" if body.year else "", body.isbn, body.ol_work_key,
          body.cover, "wanted" if body.wanted else "have", 1 if body.wanted else 0,
          "ol", now, now))

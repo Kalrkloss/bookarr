@@ -64,7 +64,7 @@ def add_author(ol_key, languages=None):
     for w in enriched:
         ed = w.get("edition") or {}
         lang_ed = w.get("lang_edition") or {}
-        lang = lang_ed.get("language") or ed.get("language") or (w["languages"][0] if w["languages"] else "")
+        lang = db.lang_code(lang_ed.get("language") or ed.get("language") or (w["languages"][0] if w["languages"] else ""))
         year = ed.get("year") or w["first_publish_year"]
         date = ed.get("publish_date") or (f"{year}-01-01" if year else "")
         series_id = None
@@ -147,7 +147,7 @@ def sync_author(author_id):
         for s in w.get("series", []):
             series_id = _get_or_create_series(author_id, s.get("name", ""), s.get("position", ""),
                                               w["ol_work_key"], s.get("ol_key", ""))
-        lang = w["languages"][0] if w["languages"] else ""
+        lang = db.lang_code(w["languages"][0] if w["languages"] else "")
         year = w["first_publish_year"]
         date = f"{year}-01-01" if year else ""
         # genaues Datum + Sprache für neue Werke nachziehen
@@ -161,7 +161,7 @@ def sync_author(author_id):
                     year = best.get("year") or year
                 for e in eds:
                     if e["language"]:
-                        lang = e["language"]
+                        lang = db.lang_code(e["language"])
                         break
         except Exception:
             pass
@@ -290,16 +290,16 @@ def start_download(book, result):
         return dl_id
 
     # Newznab → SABnzbd
-    ok, err = indexers.sabnzbd_add_nzb(result["url"], result["title"])
+    ok, nzo_id = indexers.sabnzbd_add_nzb(result["url"], result["title"])
     if not ok:
         db.ex("INSERT INTO downloads(book_id, title, source, status, message, added, updated) "
               "VALUES(?,?,?,?,?,?,?)",
-              (book["id"], book["title"], "newznab", "failed", f"SABnzbd: {err}", now, now))
-        db.log_event("error", "download", f"SABnzbd lehnt NZB ab: {err}")
+              (book["id"], book["title"], "newznab", "failed", f"SABnzbd: {nzo_id}", now, now))
+        db.log_event("error", "download", f"SABnzbd lehnt NZB ab: {nzo_id}")
         return None
     dl_id = db.ex("INSERT INTO downloads(book_id, title, source, nzb_url, status, message, added, updated) "
                   "VALUES(?,?,?,?,?,?,?,?)",
-                  (book["id"], book["title"], "newznab", result["url"], "snatched",
+                  (book["id"], book["title"], "newznab", str(nzo_id or ""), "snatched",
                    f"SABnzbd: {result['title']}", now, now))
     # Status setzen
     db.ex("UPDATE books SET status='snatched', updated=? WHERE id=?", (now, book["id"]))
@@ -315,8 +315,11 @@ def _nzb_completion_worker(dl_id, book_id, _unused=""):
     if not dl:
         return
     nzo_id = dl["nzb_url"] or ""
+    completed = False
+    failed = False
+    fail_msg = ""
+    folder = ""
     try:
-        completed_dir = None
         for _ in range(240):  # max ~2h
             time.sleep(15)
             hist = indexers.sabnzbd_history(limit=50)
@@ -325,16 +328,39 @@ def _nzb_completion_worker(dl_id, book_id, _unused=""):
                     continue
                 status = h.get("status", "")
                 if status in ("Completed", "Failed"):
-                    completed_dir = h.get("download_dir") or h.get("path") or ""
+                    completed = True
                     failed = status == "Failed"
-                    _post_process(dl_id, book_id, completed_dir, failed,
-                                  h.get("fail_message", ""))
-                    return
+                    fail_msg = h.get("fail_message", "") or ""
+                    folder = h.get("path") or h.get("download_dir") or ""
+                    break
+            if completed:
+                break
             dl = db.q1("SELECT * FROM downloads WHERE id=?", (dl_id,))
             if not dl:
                 return
     except Exception as e:
         db.log_event("error", "download", f"NZB-Überwachung abgebrochen: {e}")
+    if not completed:
+        return
+    if failed:
+        _post_process(dl_id, book_id, "", True, fail_msg)
+        return
+    # Kandidatenordner: History-Pfad, complete_dir, sortierter Fertigordner
+    folders = [folder] if folder else []
+    complete_dir = _sab_complete_dir()
+    if complete_dir:
+        folders.append(complete_dir)
+    sorted_dir = db.get_setting("sabnzbd_sorted_dir", "")
+    if sorted_dir:
+        folders.append(sorted_dir)
+    for f in folders:
+        if f and os.path.isdir(f):
+            found = _post_process(dl_id, book_id, f, False, "")
+            if found:
+                return
+    # letzter Versuch: kompletten sortierten Ordner durchsuchen
+    if sorted_dir and os.path.isdir(sorted_dir):
+        _post_process(dl_id, book_id, sorted_dir, False, "")
 
 
 def _irc_download_worker(dl_id, book_id, sources):
@@ -352,26 +378,37 @@ def _irc_download_worker(dl_id, book_id, sources):
     _post_process(dl_id, book_id, os.path.dirname(path), False, "", path)
 
 
+def _sab_complete_dir():
+    """Liest das complete_dir aus der SABnzbd-INI."""
+    try:
+        for ini in ("/home/sabnzbd/.sabnzbd/sabnzbd.ini", "/opt/sabnzbd/sabnzbd.ini"):
+            if os.path.exists(ini):
+                for line in open(ini, encoding="utf-8", errors="replace"):
+                    if line.startswith("complete_dir"):
+                        return line.split("=", 1)[1].strip()
+    except Exception:
+        pass
+    return ""
+
+
 def _post_process(dl_id, book_id, folder, failed, fail_msg="", single_file=None):
-    """Datei importieren, optional konvertieren, Buch als 'have' markieren."""
+    """Datei importieren, optional konvertieren, Buch als 'have' markieren.
+    Gibt True zurück, wenn ein Buch importiert wurde."""
     book = db.q1("SELECT * FROM books WHERE id=?", (book_id,))
     if not book:
-        return
+        return False
     if failed:
         db.ex("UPDATE downloads SET status='failed', message=?, updated=?, completed=? WHERE id=?",
               (fail_msg or "Download fehlgeschlagen", db.now(), db.now(), dl_id))
         db.ex("UPDATE wanted SET status='wanted' WHERE book_id=?", (book_id,))
         db.log_event("warn", "download", f"Download fehlgeschlagen: {fail_msg}")
-        return
+        return False
     # Buchdatei finden
     path = single_file
     if not path and folder and os.path.isdir(folder):
         path = _find_book_file(folder, book)
     if not path:
-        db.ex("UPDATE downloads SET status='failed', message='Keine Buchdatei gefunden', updated=?, completed=? WHERE id=?",
-              (db.now(), db.now(), dl_id))
-        db.log_event("warn", "download", "Keine Buchdatei im Download-Ordner gefunden")
-        return
+        return False
     lib_dir = db.get_setting("library_dir", "/opt/bookarr/books")
     author_name = db.q1("SELECT name FROM authors WHERE id=?", (book["author_id"],)) if book["author_id"] else None
     author_name = (author_name or {}).get("name", "Unbekannt")
@@ -390,6 +427,7 @@ def _post_process(dl_id, book_id, folder, failed, fail_msg="", single_file=None)
     db.ex("UPDATE downloads SET status='completed', message='Importiert', progress=100, updated=?, completed=? WHERE id=?",
           (db.now(), db.now(), dl_id))
     db.log_event("success", "import", f"'{book['title']}' importiert nach {final_path}")
+    return True
 
 
 _BOOK_EXTS = {".epub", ".mobi", ".azw", ".azw3", ".pdf", ".djvu", ".txt", ".fb2", ".cbr", ".cbz", ".lit", ".rtf", ".html", ".doc", ".docx"}
