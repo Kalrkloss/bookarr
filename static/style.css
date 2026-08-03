@@ -252,6 +252,7 @@ tr.clickable { cursor: pointer; }
 }
 .modal-lg { width: 780px; }
 .modal-sm { width: 440px; }
+.modal-xl { width: 92vw; max-width: 1200px; height: 90vh; }
 .modal-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 18px; border-bottom: 1px solid var(--border);

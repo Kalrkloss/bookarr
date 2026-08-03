@@ -47,6 +47,7 @@ with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     # German browser locale → the app must start in German (language follows browser)
     page = browser.new_page(viewport={"width": 1440, "height": 900}, locale="de-DE")
+    page.set_default_timeout(45000)  # slow server (J4205) — generous click/wait budget
     console_errors = []
     page.on("console", lambda m: console_errors.append(m.text) if m.type == "error" else None)
     page.on("pageerror", lambda e: console_errors.append(str(e)))
@@ -103,11 +104,13 @@ with sync_playwright() as p:
     def t_book_modal():
         goto(page, "/#/books")
         page.locator("tr[data-act='book-open']").first.click()
-        assert page.locator("#book-modal").is_visible()
+        # wait for the modal to actually be open, then closed — a leftover modal
+        # overlay would block every later real click
+        page.wait_for_selector("#book-modal", state="visible", timeout=20000)
         assert page.locator("#bm-title").inner_text().strip() != ""
         page.screenshot(path=f"{SHOTS}/5-book-modal.png")
         page.click("#book-modal [data-close]")
-        assert not page.locator("#book-modal").is_visible()
+        page.locator("#book-modal").wait_for(state="hidden", timeout=15000)
     check("Book detail modal opens/closes", t_book_modal)
 
     def t_wanted_scroll():
@@ -202,6 +205,25 @@ with sync_playwright() as p:
         assert page.locator("#series-all .series-block.open").count() == open_before, "Serien nicht ausgeklappt"
         page.screenshot(path=f"{SHOTS}/9-series-toggle.png")
     check("Series page: expand/collapse-all button", t_series_toggle)
+
+    def t_book_viewer():
+        goto(page, "/#/books")
+        page.wait_for_selector("#bk-q", timeout=15000)
+        page.fill("#bk-q", "Holly")
+        page.wait_for_timeout(400)
+        page.locator("tr[data-act='book-open']").first.click()
+        page.wait_for_selector("#bm-view", timeout=15000)
+        page.click("#bm-view")
+        page.wait_for_selector("#viewer-modal", timeout=15000)
+        assert page.locator("#viewer-modal").is_visible(), "Viewer-Modal nicht offen"
+        # epub.js renders into #vm-epub (creates an internal iframe); the 5 MB
+        # file + parse takes a while on this slow server
+        page.wait_for_selector("#vm-epub iframe", timeout=45000)
+        page.screenshot(path=f"{SHOTS}/10-viewer.png")
+        page.click("#viewer-modal [data-close]")
+        page.wait_for_timeout(300)
+        assert page.locator("#viewer-modal").is_hidden(), "Viewer-Modal nicht geschlossen"
+    check("Book viewer: EPUB renders via epub.js", t_book_viewer)
 
     browser.close()
 

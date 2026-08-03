@@ -33,6 +33,9 @@ dark-themed web UI.
 - **System page**: connection status (Prowlarr / SABnzbd / IRC / Calibre), scheduler state, logs
 - **i18n**: all UI strings in resource files (`static/locales/{de,en}.json`); the language
   follows the browser language and can be switched at any time via the dropdown in the top bar
+- **Built-in book viewer**: owned books can be **viewed right in the browser**
+  (PDF / TXT / HTML natively, EPUB via self-hosted [epub.js](https://github.com/futurepress/epub.js))
+  and downloaded (`/api/books/{id}/file`, Range-request capable)
 - **No hanging tasks**: every background task is bounded by timeouts — bounded IRC locks,
   a stale-download watchdog (2 h → marked failed), startup cleanup for dead IRC downloads
   and expiring search flags (30 min)

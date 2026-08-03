@@ -397,8 +397,16 @@ function setDot(id, on) {
 }
 
 /* ============ modals ============ */
+let _rendition = null; // active epub.js rendition (book viewer)
+
 function openModal(id) { document.getElementById(id).classList.remove("hidden"); }
-function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
+function closeModal(id) {
+  if (id === "viewer-modal" && _rendition) {
+    try { _rendition.destroy(); } catch (e) {}
+    _rendition = null;
+  }
+  document.getElementById(id).classList.add("hidden");
+}
 
 document.addEventListener("click", e => {
   if (e.target.classList.contains("modal")) closeModal(e.target.id);
@@ -743,7 +751,7 @@ function eventsFeed(events) {
 
 /* ============ page: books ============ */
 async function pageBooks(content) {
-  const books = await api("api/books?limit=500");
+  const books = await api("api/books?limit=1000");
   const langs = [...new Set(books.map(b => b.language).filter(Boolean))].sort();
   const TABLE_ID = "books-all";
   let current = books;
@@ -909,6 +917,8 @@ async function showBookModal(id, opts = {}) {
         <div style="margin-top:10px" class="row-actions" style="flex-wrap:wrap;justify-content:flex-start">
           ${b.wanted ? `<button class="btn small" id="bm-wanted" data-w="0">${t("book.wanted_remove")}</button>`
                      : `<button class="btn small primary" id="bm-wanted" data-w="1">${t("book.wanted_add")}</button>`}
+          ${b.file_path ? `<button class="btn small primary" id="bm-view">${t("book.view")}</button>
+          <a class="btn small" id="bm-download" href="api/books/${b.id}/file" download title="${esc(b.file_path)}">${t("book.download")}</a>` : ""}
           <button class="btn small" id="bm-convert" ${b.file_path ? "" : "disabled"} title="${b.file_path ? t("book.convert_title") : t("book.no_file_title")}">${t("book.convert")}</button>
           <button class="btn small danger" id="bm-del">${t("book.delete")}</button>
         </div>
@@ -950,7 +960,40 @@ async function showBookModal(id, opts = {}) {
   });
   document.getElementById("bm-search-sources").addEventListener("click", () => searchSources(b.id, b.title));
 
+  const viewBtn = document.getElementById("bm-view");
+  if (viewBtn) viewBtn.addEventListener("click", () => openViewer(b));
+
   if (opts.autoSearch) searchSources(b.id, b.title);
+}
+
+/* ============ book viewer (pdf/txt/html native, epub via epub.js) ============ */
+function openViewer(book) {
+  const ext = (book.file_path || "").split(".").pop().toLowerCase();
+  document.getElementById("vm-title").textContent = book.title;
+  const body = document.getElementById("vm-body");
+  body.innerHTML = "";
+  const url = `api/books/${book.id}/file`;
+  if (["pdf", "txt", "html", "htm"].includes(ext)) {
+    body.innerHTML = `<iframe src="${url}" style="width:100%;height:100%;border:none"></iframe>`;
+  } else if (ext === "epub" && typeof ePub === "function") {
+    body.innerHTML = `<div id="vm-epub" style="width:100%;height:100%"></div>`;
+    // load the file as an ArrayBuffer — passing the URL directly would make
+    // epub.js resolve the epub's internal paths against it (404)
+    fetch(url).then(r => r.arrayBuffer()).then(buf => {
+      if (!document.getElementById("vm-epub")) return; // modal was closed meanwhile
+      _rendition = ePub(buf).renderTo("vm-epub", { width: "100%", height: "100%" });
+      _rendition.display();
+    }).catch(() => {
+      const box = document.getElementById("vm-body");
+      if (box) box.innerHTML = `<div class="empty" style="background:var(--bg);height:100%">
+        ${esc(t("book.viewer_unsupported", { format: "epub" }))}</div>`;
+    });
+  } else {
+    body.innerHTML = `<div class="empty" style="background:var(--bg);height:100%">
+      ${esc(t("book.viewer_unsupported", { format: ext || "?" }))}<br>
+      <a class="btn primary" style="margin-top:12px" href="${url}" download>${esc(t("book.download"))}</a></div>`;
+  }
+  openModal("viewer-modal");
 }
 
 async function searchSources(bookId, title) {

@@ -154,7 +154,10 @@
     "convert": "🔄 Konvertieren",
     "convert_title": "In Zielformat konvertieren",
     "no_file_title": "Keine Datei vorhanden",
-    "delete": "Löschen"
+    "delete": "Löschen",
+    "view": "Ansehen",
+    "download": "Download",
+    "viewer_unsupported": "Format {format} kann nicht im Browser angezeigt werden."
   },
   "sources": {
     "running": "{spinner} Suche NZB & IRC … <span class=\"muted\">(IRC kann bis zu 3 Min. dauern)</span>",

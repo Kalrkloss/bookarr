@@ -326,6 +326,33 @@ def api_book_detail(bid: int):
     return b
 
 
+# formats the browser can display inline (pdf/txt/html native, epub via epub.js)
+_VIEW_MIMES = {
+    ".pdf": "application/pdf",
+    ".epub": "application/epub+zip",
+    ".txt": "text/plain; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".htm": "text/html; charset=utf-8",
+}
+
+
+@app.get("/api/books/{bid}/file")
+def api_book_file(bid: int):
+    """Serve the book file. Inline for viewable formats (pdf/epub/txt/html),
+    attachment otherwise. Supports Range requests (streaming)."""
+    b = db.q1("SELECT file_path FROM books WHERE id=?", (bid,))
+    if not b or not b["file_path"]:
+        raise HTTPException(404, "No file for this book")
+    path = b["file_path"]
+    if not os.path.exists(path):
+        raise HTTPException(404, "File not found on disk")
+    ext = os.path.splitext(path)[1].lower()
+    mime = _VIEW_MIMES.get(ext, "application/octet-stream")
+    inline = ext in _VIEW_MIMES
+    return FileResponse(path, media_type=mime, filename=os.path.basename(path),
+                        content_disposition_type="inline" if inline else "attachment")
+
+
 class BookPatch(BaseModel):
     status: str = None
     wanted: int = None

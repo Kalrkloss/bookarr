@@ -93,6 +93,17 @@
   </div>
 </div>
 
+<!-- book viewer modal (pdf/txt/html native, epub via epub.js) -->
+<div id="viewer-modal" class="modal hidden">
+  <div class="modal-box modal-xl">
+    <div class="modal-head">
+      <h2 id="vm-title">Buch</h2>
+      <button class="modal-close" data-close="viewer-modal">✕</button>
+    </div>
+    <div id="vm-body" style="flex:1;min-height:0;background:#fff"></div>
+  </div>
+</div>
+
 <!-- column filter popup (excel-style) -->
 <div id="col-filter-popup" class="col-filter-popup hidden">
   <input type="text" id="cf-search" data-i18n-placeholder="table.search" placeholder="Suchen…" autocomplete="off">
@@ -104,6 +115,8 @@
 </div>
 
 <div id="toasts"></div>
+<script src="static/vendor/jszip.min.js"></script>
+<script src="static/vendor/epub.min.js"></script>
 <script src="static/app.js"></script>
 </body>
 </html>
