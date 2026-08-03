@@ -219,6 +219,28 @@ with sync_playwright() as p:
         # epub.js renders into #vm-epub (creates an internal iframe); the 5 MB
         # file + parse takes a while on this slow server
         page.wait_for_selector("#vm-epub iframe", timeout=45000)
+        # viewer navigation: next/prev buttons + progress display must exist
+        assert page.locator("#vm-nav").is_visible(), "Viewer-Navigation nicht sichtbar"
+        assert page.locator("#vm-pos").inner_text() != "—", "Fortschritt nicht gesetzt"
+        # paging must actually turn pages: keep pressing next until visible text
+        # appears in the epub.js iframe (the first pages are cover/blank)
+        def iframe_text():
+            return page.evaluate("""() => {
+              const f = document.querySelector('#vm-epub iframe');
+              if (!f) return '';
+              try { return (f.contentDocument.body.innerText || '').trim(); }
+              catch (e) { return ''; }
+            }""")
+        seen = set()
+        for _ in range(12):
+            txt = iframe_text()
+            if txt:
+                seen.add(txt[:60])
+            if len(seen) >= 2:
+                break
+            page.click("#vm-next")
+            page.wait_for_timeout(700)
+        assert len(seen) >= 2, f"Blättern brachte keine neuen Seiten: {seen}"
         page.screenshot(path=f"{SHOTS}/10-viewer.png")
         page.click("#viewer-modal [data-close]")
         page.wait_for_timeout(300)

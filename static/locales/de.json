@@ -157,6 +157,8 @@
     "delete": "Löschen",
     "view": "Ansehen",
     "download": "Download",
+    "viewer_prev": "Vorherige Seite (←)",
+    "viewer_next": "Nächste Seite (→)",
     "viewer_unsupported": "Format {format} kann nicht im Browser angezeigt werden."
   },
   "sources": {

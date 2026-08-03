@@ -973,16 +973,33 @@ function openViewer(book) {
   const body = document.getElementById("vm-body");
   body.innerHTML = "";
   const url = `api/books/${book.id}/file`;
+  const nav = document.getElementById("vm-nav");
+  const pos = document.getElementById("vm-pos");
+  const prevBtn = document.getElementById("vm-prev");
+  const nextBtn = document.getElementById("vm-next");
+  const isEpub = ext === "epub";
+  nav.classList.toggle("hidden", !isEpub);
+  if (isEpub) {
+    prevBtn.title = t("book.viewer_prev");
+    nextBtn.title = t("book.viewer_next");
+  }
   if (["pdf", "txt", "html", "htm"].includes(ext)) {
     body.innerHTML = `<iframe src="${url}" style="width:100%;height:100%;border:none"></iframe>`;
-  } else if (ext === "epub" && typeof ePub === "function") {
+  } else if (isEpub && typeof ePub === "function") {
     body.innerHTML = `<div id="vm-epub" style="width:100%;height:100%"></div>`;
     // load the file as an ArrayBuffer — passing the URL directly would make
     // epub.js resolve the epub's internal paths against it (404)
     fetch(url).then(r => r.arrayBuffer()).then(buf => {
       if (!document.getElementById("vm-epub")) return; // modal was closed meanwhile
-      _rendition = ePub(buf).renderTo("vm-epub", { width: "100%", height: "100%" });
+      const book2 = ePub(buf);
+      _rendition = book2.renderTo("vm-epub", { width: "100%", height: "100%" });
       _rendition.display();
+      _rendition.on("relocated", loc => {
+        const p = loc && loc.start && loc.start.percentage;
+        if (p != null) pos.textContent = `${Math.max(1, Math.round(p * 100))}%`;
+      });
+      prevBtn.onclick = () => _rendition.prev();
+      nextBtn.onclick = () => _rendition.next();
     }).catch(() => {
       const box = document.getElementById("vm-body");
       if (box) box.innerHTML = `<div class="empty" style="background:var(--bg);height:100%">
@@ -995,6 +1012,19 @@ function openViewer(book) {
   }
   openModal("viewer-modal");
 }
+
+// keyboard paging in the viewer (only while it is open)
+document.addEventListener("keydown", e => {
+  if (document.getElementById("viewer-modal").classList.contains("hidden")) return;
+  if (!_rendition) return;
+  if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
+    e.preventDefault();
+    _rendition.next();
+  } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+    e.preventDefault();
+    _rendition.prev();
+  }
+});
 
 async function searchSources(bookId, title) {
   if (sourcesTimer) clearInterval(sourcesTimer);

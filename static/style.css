@@ -258,6 +258,9 @@ tr.clickable { cursor: pointer; }
   padding: 14px 18px; border-bottom: 1px solid var(--border);
 }
 .modal-head h2 { font-size: 16px; }
+.viewer-nav { display: flex; align-items: center; gap: 6px; }
+.viewer-pos { font-size: 12px; color: var(--muted); min-width: 42px; text-align: center; }
+.viewer-nav .btn { padding: 4px 10px; }
 .modal-close { background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 4px 8px; }
 .modal-close:hover { color: var(--text); }
 .modal-body { padding: 16px 18px; overflow-y: auto; }
