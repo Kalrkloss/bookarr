@@ -133,10 +133,12 @@ with sync_playwright() as p:
 
     def t_author_page():
         goto(page, "/#/authors")
+        assert page.locator(".author-card-img").count() >= 2, "Autoren-Karten ohne Bilder"
         page.locator(".author-card").first.click()
         page.wait_for_selector(".author-header", timeout=10000)
+        assert page.locator(".author-header img.author-photo").count() == 1, "Autor-Detail ohne Foto"
         page.screenshot(path=f"{SHOTS}/6-author.png")
-    check("Authors page → author detail", t_author_page)
+    check("Authors page → author detail (with photo)", t_author_page)
 
     def t_sort_books():
         goto(page, "/#/books")

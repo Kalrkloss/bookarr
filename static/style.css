@@ -182,6 +182,14 @@ tr.clickable { cursor: pointer; }
 .author-card .a-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
 .author-card .a-sub { color: var(--muted); font-size: 12px; }
 .author-card .a-meta { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.author-card-img {
+  width: 100%; height: 130px; object-fit: cover; object-position: top;
+  border-radius: 6px; margin-bottom: 10px; background: #2a2f3d;
+}
+.author-photo {
+  width: 90px; height: 130px; object-fit: cover; object-position: top;
+  border-radius: 6px; flex-shrink: 0; background: #2a2f3d;
+}
 
 /* ---------- Serie Accordion ---------- */
 .series-block { margin-bottom: 14px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }

@@ -19,7 +19,16 @@ def connect():
     _conn.execute("PRAGMA journal_mode=WAL")
     _conn.execute("PRAGMA foreign_keys=ON")
     _init_schema()
+    _ensure_columns()
     _seed_defaults()
+
+
+def _ensure_columns():
+    """Idempotent ALTERs for schema evolution on existing databases."""
+    cols = {r["name"] for r in _conn.execute("PRAGMA table_info(authors)")}
+    if "image_url" not in cols:
+        _conn.execute("ALTER TABLE authors ADD COLUMN image_url TEXT DEFAULT ''")
+        _conn.commit()
 
 
 def _init_schema():
@@ -39,6 +48,7 @@ def _init_schema():
             birth_date TEXT,
             death_date TEXT,
             bio TEXT,
+            image_url TEXT DEFAULT '',
             languages TEXT DEFAULT '["de","en"]',
             monitor INTEGER DEFAULT 0,
             interval_hours INTEGER DEFAULT 168,

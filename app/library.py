@@ -85,6 +85,13 @@ def add_author(ol_key, languages=None):
     db.log_event("success", "author", f"Author '{detail['name']}' created ({added_books} books)")
     _fill_author_language_fallback(author_id)
     sync_series_from_wikidata(author_id)
+    # author photo from Wikipedia (pageimages)
+    try:
+        img = metadata.wikipedia_author_image(detail["name"], detail.get("wikipedia_url", ""))
+        if img:
+            db.ex("UPDATE authors SET image_url=?, updated=? WHERE id=?", (img, now, author_id))
+    except Exception:
+        pass
     return author_id
 
 
@@ -274,6 +281,14 @@ def sync_author(author_id):
     db.ex("UPDATE authors SET last_checked=?, updated=? WHERE id=?", (now, now, author_id))
     _fill_author_language_fallback(author_id)
     sync_series_from_wikidata(author_id)
+    # fetch the author photo once, if missing
+    if not a["image_url"]:
+        try:
+            img = metadata.wikipedia_author_image(a["name"], a.get("wikipedia_url", ""))
+            if img:
+                db.ex("UPDATE authors SET image_url=?, updated=? WHERE id=?", (img, now, author_id))
+        except Exception:
+            pass
     if new_books:
         db.log_event("info", "author", f"Sync '{a['name']}': {new_books} new books")
     return new_books

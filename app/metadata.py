@@ -186,6 +186,30 @@ def detect_language_from_title(title):
     return ""
 
 
+def wikipedia_author_image(name, wikipedia_url="", lang="de", timeout=15):
+    """Author photo from the Wikipedia article (pageimages API, 400 px thumbnail).
+    Falls back to en.wikipedia. Returns the image URL or ""."""
+    page = name
+    if wikipedia_url and "/wiki/" in wikipedia_url:
+        page = wikipedia_url.split("/wiki/")[-1]
+    langs = [lang, "en"] if lang != "en" else ["en"]
+    for l in langs:
+        try:
+            r = SESSION.get(f"https://{l}.wikipedia.org/w/api.php", params={
+                "action": "query", "prop": "pageimages", "titles": page,
+                "format": "json", "pithumbsize": 400, "redirects": 1,
+            }, timeout=timeout)
+            if r.status_code != 200:
+                continue
+            for p in r.json().get("query", {}).get("pages", {}).values():
+                thumb = p.get("thumbnail", {}).get("source", "")
+                if thumb:
+                    return thumb
+        except Exception:
+            continue
+    return ""
+
+
 # ---------------- Wikidata (series) ----------------
 
 WD_SPARQL = "https://query.wikidata.org/sparql"

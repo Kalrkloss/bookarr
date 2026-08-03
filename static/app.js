@@ -1043,6 +1043,7 @@ function authorCards(authors) {
   if (!authors.length) return `<div class="empty" style="grid-column:1/-1">${esc(t("authors.empty"))}</div>`;
   return authors.map(a => `
     <div class="author-card" data-nav-author="${a.id}">
+      ${a.image_url ? `<img src="${esc(a.image_url)}" class="author-card-img" alt="" loading="lazy">` : ""}
       <div class="a-name">${esc(a.name)}</div>
       <div class="a-sub">${esc(a.birth_date || "")}${a.death_date ? " – " + esc(a.death_date) : ""}</div>
       <div class="a-meta">
@@ -1069,7 +1070,9 @@ async function pageAuthor(content, param) {
 
   content.innerHTML = `
     <div class="author-header">
-      <div class="cover-placeholder" style="width:90px;height:130px;font-size:32px;flex-shrink:0">${esc(initials)}</div>
+      ${a.image_url
+        ? `<img src="${esc(a.image_url)}" class="author-photo" alt="">`
+        : `<div class="cover-placeholder" style="width:90px;height:130px;font-size:32px;flex-shrink:0">${esc(initials)}</div>`}
       <div style="flex:1">
         <div class="ah-name">${esc(a.name)}</div>
         <div class="ah-sub">${esc(a.birth_date || "")}${a.death_date ? " – " + esc(a.death_date) : ""}${a.languages.length ? t("authors.monitored_langs") + a.languages.map(l => `<span class="lang-tag">${esc(l)}</span>`).join(" ") : ""}</div>
