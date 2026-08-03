@@ -914,7 +914,7 @@ async function showBookModal(id, opts = {}) {
     <div class="bm-grid">
       <div>
         ${coverImg(b.cover_url, "book-thumb-lg")}
-        <div style="margin-top:10px" class="row-actions" style="flex-wrap:wrap;justify-content:flex-start">
+        <div class="bm-actions">
           ${b.wanted ? `<button class="btn small" id="bm-wanted" data-w="0">${t("book.wanted_remove")}</button>`
                      : `<button class="btn small primary" id="bm-wanted" data-w="1">${t("book.wanted_add")}</button>`}
           ${b.file_path ? `<button class="btn small primary" id="bm-view">${t("book.view")}</button>

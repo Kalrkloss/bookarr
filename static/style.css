@@ -421,6 +421,10 @@ th.sortable { cursor: pointer; user-select: none; }
 }
 .book-thumb-lg { width: 130px; height: 190px; object-fit: cover; border-radius: 6px; background: #2a2f3d; }
 .bm-grid { display: grid; grid-template-columns: 150px 1fr; gap: 20px; }
+.bm-actions {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  justify-content: flex-start; margin-top: 10px;
+}
 .bm-desc { color: var(--muted); font-size: 13px; margin-top: 10px; max-height: 130px; overflow-y: auto; }
 .kv { display: flex; gap: 8px; font-size: 13px; margin-bottom: 5px; }
 .kv .k { color: var(--muted); min-width: 110px; }
