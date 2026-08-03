@@ -451,7 +451,7 @@ function booksTable(books) {
         <td class="muted">${esc(b.series_name || "—")}</td>
         <td>${b.language ? `<span class="lang-tag">${esc(b.language)}</span>` : "—"}</td>
         <td class="${isFuture(b.publish_date) ? "future" : ""}">${fmtDate(b.publish_date)}${isFuture(b.publish_date) ? " ⏳" : ""}</td>
-        <td>${statusBadge(b.status)}</td>
+        <td data-status-badge>${statusBadge(b.status)}</td>
         <td><div class="row-actions">
           <button class="btn small" data-act="book-sources" data-id="${b.id}" title="Quellen suchen">🔍</button>
           ${b.wanted ? `<button class="btn small" data-act="book-wanted" data-id="${b.id}" data-w="0" title="Wanted entfernen">✓</button>`
@@ -469,14 +469,32 @@ document.addEventListener("click", async e => {
   const wanted = e.target.closest("[data-act='book-wanted']");
   if (wanted) {
     e.stopPropagation();
+    const bid = +wanted.dataset.id;
+    const wantOn = wanted.dataset.w === "1";
+    wanted.disabled = true;
     try {
-      await api(`api/books/${wanted.dataset.id}`, {
+      const resp = await api(`api/books/${bid}`, {
         method: "PATCH",
-        body: JSON.stringify({ wanted: +wanted.dataset.w }),
+        body: JSON.stringify({ wanted: wantOn ? 1 : 0 }),
       });
-      toast(wanted.dataset.w === "1" ? "Als Wanted markiert" : "Wanted entfernt", "success");
-      router();
+      const tr = wanted.closest("tr");
+      if (tr) {
+        if (tr.hasAttribute("data-act")) {
+          // Bücher-/Serien-Tabelle: Zeile in-place aktualisieren → Scroll-Position bleibt
+          const badgeCell = tr.querySelector("[data-status-badge]");
+          if (badgeCell) badgeCell.innerHTML = statusBadge(resp.status);
+          wanted.dataset.w = wantOn ? "0" : "1";
+          wanted.title = wantOn ? "Wanted entfernen" : "Als Wanted markieren";
+          wanted.innerHTML = wantOn ? "✓" : "⏳";
+        } else {
+          // Wanted-Liste: Zeile entfernen (Buch ist nicht mehr wanted)
+          tr.remove();
+        }
+      }
+      toast(wantOn ? "Als Wanted markiert" : "Wanted entfernt", "success");
+      refreshStatus();
     } catch (err) { toast(err.message, "error"); }
+    finally { wanted.disabled = false; }
     return;
   }
   const del = e.target.closest("[data-act='book-del']");
@@ -756,7 +774,7 @@ function seriesBlock(s) {
             <td><b>${esc(b.title)}</b>${b.series_number ? ` <span class="muted">#${esc(b.series_number)}</span>` : ""}</td>
             <td>${b.language ? `<span class="lang-tag">${esc(b.language)}</span>` : "—"}</td>
             <td class="${isFuture(b.publish_date) ? "future" : ""}">${fmtDate(b.publish_date)}${isFuture(b.publish_date) ? " ⏳" : ""}</td>
-            <td>${statusBadge(b.status)}</td>
+            <td data-status-badge>${statusBadge(b.status)}</td>
             <td><div class="row-actions">
               <button class="btn small" data-act="book-sources" data-id="${b.id}" title="Quellen suchen">🔍</button>
               ${b.wanted ? `<button class="btn small" data-act="book-wanted" data-id="${b.id}" data-w="0" title="Wanted entfernen">✓</button>` : ""}

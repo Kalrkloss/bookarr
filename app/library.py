@@ -239,8 +239,11 @@ def set_book_wanted(book_id, wanted, interval_hours=None):
         _set_wanted(book_id, interval_hours)
     else:
         db.ex("DELETE FROM wanted WHERE book_id=?", (book_id,))
-        db.ex("UPDATE books SET wanted=0, updated=? WHERE id=? AND status IN ('wanted','missing')",
-              (db.now(), book_id))
+        # Status konsistent zur Datei-Lage: have nur bei echter Datei, sonst missing
+        b = db.q1("SELECT file_path FROM books WHERE id=?", (book_id,))
+        new_status = "have" if (b and b["file_path"]) else "missing"
+        db.ex("UPDATE books SET wanted=0, status=?, updated=? WHERE id=?",
+              (new_status, db.now(), book_id))
 
 
 def wanted_books():

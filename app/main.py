@@ -400,7 +400,8 @@ def api_patch_book(bid: int, body: BookPatch):
             db.ex("DELETE FROM wanted WHERE book_id=?", (bid,))
     if body.language is not None:
         db.ex("UPDATE books SET language=?, updated=? WHERE id=?", (body.language, db.now(), bid))
-    return {"ok": True}
+    cur = db.q1("SELECT status, wanted FROM books WHERE id=?", (bid,))
+    return {"ok": True, "status": cur["status"], "wanted": cur["wanted"]}
 
 
 @app.post("/api/books/{bid}/convert")
