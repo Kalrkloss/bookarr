@@ -82,7 +82,8 @@ def add_author(ol_key, languages=None):
             added_books += 1
         except Exception:
             pass
-    db.log_event("success", "author", f"Author '{detail["name"]}' created ({added_books} books)")
+    db.log_event("success", "author", f"Author '{detail['name']}' created ({added_books} books)")
+    _fill_author_language_fallback(author_id)
     return author_id
 
 
@@ -101,6 +102,24 @@ def _sort_name(name):
     if len(parts) == 2 and not name.endswith("."):
         return f"{parts[1]}, {parts[0]}"
     return name
+
+
+def author_dominant_language(author_id):
+    """Most frequent language among the author's books with a known language.
+    Used as a fallback for works without any language data (e.g. King → en)."""
+    row = db.q1("""SELECT language, COUNT(*) c FROM books
+                   WHERE author_id=? AND language != ''
+                   GROUP BY language ORDER BY c DESC LIMIT 1""", (author_id,))
+    return row["language"] if row else ""
+
+
+def _fill_author_language_fallback(author_id):
+    """Fill books without a language using the author's dominant language."""
+    fb = author_dominant_language(author_id)
+    if fb:
+        db.ex("UPDATE books SET language=?, updated=? WHERE author_id=? AND language=''",
+              (fb, db.now(), author_id))
+    return fb
 
 
 def _get_or_create_series(author_id, name, position, ol_work_key, ol_series_key=""):
@@ -177,8 +196,9 @@ def sync_author(author_id):
         except Exception:
             pass
     db.ex("UPDATE authors SET last_checked=?, updated=? WHERE id=?", (now, now, author_id))
+    _fill_author_language_fallback(author_id)
     if new_books:
-        db.log_event("info", "author", f"Sync '{a["name"]}': {new_books} new books")
+        db.log_event("info", "author", f"Sync '{a['name']}': {new_books} new books")
     return new_books
 
 

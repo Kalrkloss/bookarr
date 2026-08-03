@@ -14,6 +14,7 @@ os.environ["BOOKARR_DB"] = os.path.join(_TMP, "test.db")
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app"))
 
 import db  # noqa: E402
+import library  # noqa: E402
 import metadata  # noqa: E402
 
 
@@ -67,6 +68,20 @@ class LanguageDetectionTests(unittest.TestCase):
         self.assertEqual(db.lang_code("eng"), "en")
         self.assertEqual(db.lang_code("und"), "")
         self.assertEqual(db.lang_code("de"), "de")
+
+    def test_author_dominant_language_fallback(self):
+        """Books without language data inherit the author's dominant language."""
+        now = db.now()
+        aid = db.ex("INSERT INTO authors(name, sort_name, languages, added, updated) "
+                    "VALUES(?,?,?,?,?)", ("Test-Autor", "Test-Autor", '["de","en"]', now, now))
+        for title, lang in (("A1", "en"), ("A2", "en"), ("A3", "de"), ("A4", "")):
+            db.ex("INSERT INTO books(title, norm_title, author_id, language, added, updated) "
+                  "VALUES(?,?,?,?,?,?)", (title, title.lower(), aid, lang, now, now))
+        self.assertEqual(library.author_dominant_language(aid), "en")
+        library._fill_author_language_fallback(aid)
+        self.assertEqual(db.q1("SELECT language FROM books WHERE title='A4'")["language"], "en")
+        # no crash for authors without any language data
+        self.assertEqual(library.author_dominant_language(999999), "")
 
 
 if __name__ == "__main__":
