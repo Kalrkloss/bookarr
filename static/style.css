@@ -314,6 +314,24 @@ tr.clickable { cursor: pointer; }
 .switch-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .switch-row .sw-label { flex: 1; }
 
+/* ---------- Dropdown (language switcher) ---------- */
+.dropdown { position: relative; display: inline-block; }
+.dropdown-menu {
+  position: absolute; right: 0; top: calc(100% + 4px);
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 6px; min-width: 140px; z-index: 60;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45); overflow: hidden;
+}
+.dropdown-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: none; border: none; color: var(--text);
+  padding: 9px 14px; font-size: 13px; cursor: pointer;
+}
+.dropdown-item:hover { background: var(--panel); }
+.dropdown-item.active { color: var(--accent-2); font-weight: 600; }
+.dropdown-item .check { visibility: hidden; color: var(--accent); }
+.dropdown-item.active .check { visibility: visible; }
+
 /* ---------- Toasts ---------- */
 #toasts { position: fixed; bottom: 18px; right: 18px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
 .toast {

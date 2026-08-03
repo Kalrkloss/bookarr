@@ -283,6 +283,8 @@
   },
   "lang": {
     "name": "EN",
-    "switch": "Language: {lang}"
+    "switch": "Language: {lang}",
+    "de": "German",
+    "en": "English"
   }
 }

@@ -39,7 +39,13 @@
         <button class="btn" id="btn-search" title="🔍"><span data-i18n="common.search">Suche</span></button>
         <button class="btn" id="btn-wanted-search" title="⏳"><span data-i18n="topbar.wanted_search">Wanted-Suche</span></button>
         <button class="btn" id="btn-sync-all" title="🔄"><span data-i18n="topbar.sync">Sync</span></button>
-        <button class="btn primary" id="btn-lang" title="Language">DE</button>
+        <div class="dropdown" id="lang-dropdown">
+          <button class="btn primary" id="btn-lang" title="Language">DE ▾</button>
+          <div class="dropdown-menu hidden" id="lang-menu">
+            <button class="dropdown-item" data-lang="de"><span class="check">✓</span><span data-i18n="lang.de">Deutsch</span></button>
+            <button class="dropdown-item" data-lang="en"><span class="check">✓</span><span data-i18n="lang.en">English</span></button>
+          </div>
+        </div>
       </div>
     </header>
     <div id="content"></div>
