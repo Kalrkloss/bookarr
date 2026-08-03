@@ -10,9 +10,9 @@ lint:
 	$(PY) -m py_compile app/*.py run.py tests/test_timeouts.py
 	node --check static/app.js
 
-## test-unit: timeout-hardening unit tests (isolated temp DB)
+## test-unit: unit tests (isolated temp DB)
 test-unit:
-	$(PY) -m unittest tests.test_timeouts -v
+	$(PY) -m unittest tests.test_timeouts tests.test_language -v
 
 ## test-e2e: Playwright UI test against a running instance
 test-e2e:

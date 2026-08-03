@@ -141,6 +141,50 @@ def work_editions(ol_work_key, limit=50):
     return out
 
 
+def best_language_from_editions(eds):
+    """Original-language guess from a list of editions:
+    1) language of the OLDEST dated edition (first publication ≈ original language)
+    2) fallback: most frequent language among all editions."""
+    dated = [e for e in eds if e["year"]]
+    dated.sort(key=lambda e: e["year"])
+    for e in dated:
+        if e["language"]:
+            return e["language"]
+    from collections import Counter
+    cnt = Counter(e["language"] for e in eds if e["language"])
+    return cnt.most_common(1)[0][0] if cnt else ""
+
+
+def best_work_language(ol_work_key, limit=50):
+    """Best-guess original language of a work (oldest-dated-edition heuristic)."""
+    try:
+        return best_language_from_editions(work_editions(ol_work_key, limit=limit))
+    except Exception:
+        return ""
+
+
+# conservative title-based language hints via unambiguous diacritics
+_TITLE_LANG_HINTS = [
+    ("ß", "de"), ("ä", "de"), ("ö", "de"), ("ü", "de"),
+    ("ã", "pt"), ("õ", "pt"),
+    ("ñ", "es"), ("¿", "es"), ("¡", "es"),
+    ("æ", "da"), ("ø", "da"),
+    ("ł", "pl"),
+    ("ő", "hu"), ("ű", "hu"),
+    ("č", "cs"),
+    ("ş", "tr"), ("ğ", "tr"), ("ı", "tr"),
+]
+
+
+def detect_language_from_title(title):
+    """Last-resort language hint from a title's diacritics. Returns "" if ambiguous."""
+    t = title or ""
+    for char, lang in _TITLE_LANG_HINTS:
+        if char in t:
+            return lang
+    return ""
+
+
 def search_books(query, limit=20):
     data = _get(f"{OL}/search.json", {"q": query, "limit": limit, "fields": "key,title,author_name,first_publish_year,language,isbn,cover_i"})
     out = []

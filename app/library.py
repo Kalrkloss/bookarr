@@ -43,16 +43,13 @@ def add_author(ol_key, languages=None):
                 # date: NEWEST edition with a year (also surfaces upcoming books)
                 dated = [e for e in eds if e["year"]]
                 best_date = max(dated, key=lambda e: e["year"]) if dated else eds[0]
-                # language: oldest edition with a language (≈ original language)
-                lang_ed = None
-                for e in eds:
-                    if e["language"]:
-                        lang_ed = e
-                        break
-                return {**w, "edition": best_date, "lang_edition": lang_ed}
+                # language: oldest dated edition (first publication ≈ original language),
+                # fallback: most frequent language among all editions
+                lang = metadata.best_language_from_editions(eds)
+                return {**w, "edition": best_date, "language_guess": lang}
         except Exception:
             pass
-        return {**w, "edition": None, "lang_edition": None}
+        return {**w, "edition": None, "language_guess": None}
 
     from concurrent.futures import ThreadPoolExecutor
     enriched = []
@@ -63,8 +60,9 @@ def add_author(ol_key, languages=None):
     added_books = 0
     for w in enriched:
         ed = w.get("edition") or {}
-        lang_ed = w.get("lang_edition") or {}
-        lang = db.lang_code(lang_ed.get("language") or ed.get("language") or (w["languages"][0] if w["languages"] else ""))
+        lang = db.lang_code(w.get("language_guess")
+                            or metadata.detect_language_from_title(w["title"])
+                            or (w["languages"][0] if w["languages"] else ""))
         year = ed.get("year") or w["first_publish_year"]
         date = ed.get("publish_date") or (f"{year}-01-01" if year else "")
         series_id = None
@@ -150,7 +148,7 @@ def sync_author(author_id):
         lang = db.lang_code(w["languages"][0] if w["languages"] else "")
         year = w["first_publish_year"]
         date = f"{year}-01-01" if year else ""
-        # fetch exact date + language for new works
+        # fetch exact date + language for new works (oldest-dated-edition heuristic)
         try:
             eds = metadata.work_editions(w["ol_work_key"], limit=15)
             if eds:
@@ -159,10 +157,8 @@ def sync_author(author_id):
                     best = max(dated, key=lambda e: e["year"])
                     date = best.get("publish_date") or date
                     year = best.get("year") or year
-                for e in eds:
-                    if e["language"]:
-                        lang = db.lang_code(e["language"])
-                        break
+                lang = db.lang_code(metadata.best_language_from_editions(eds)
+                                    or metadata.detect_language_from_title(title)) or lang
         except Exception:
             pass
         want = _should_want(author_id, lang)
