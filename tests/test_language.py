@@ -83,6 +83,14 @@ class LanguageDetectionTests(unittest.TestCase):
         # no crash for authors without any language data
         self.assertEqual(library.author_dominant_language(999999), "")
 
+    def test_collection_type_filter(self):
+        """Wikidata collection/anthology types must be filtered, real series kept."""
+        for t in ("short story collection", "collection of literary works",
+                  "anthology", "novel", "literary work"):
+            self.assertTrue(metadata.is_collection_type(t), t)
+        for t in ("novel series", "book series", "literary series", "", None):
+            self.assertFalse(metadata.is_collection_type(t), t)
+
 
 if __name__ == "__main__":
     unittest.main()

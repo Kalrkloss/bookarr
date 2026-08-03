@@ -84,6 +84,7 @@ def add_author(ol_key, languages=None):
             pass
     db.log_event("success", "author", f"Author '{detail['name']}' created ({added_books} books)")
     _fill_author_language_fallback(author_id)
+    sync_series_from_wikidata(author_id)
     return author_id
 
 
@@ -120,6 +121,81 @@ def _fill_author_language_fallback(author_id):
         db.ex("UPDATE books SET language=?, updated=? WHERE author_id=? AND language=''",
               (fb, db.now(), author_id))
     return fb
+
+
+def sync_series_from_wikidata(author_id):
+    """Import series from Wikidata (author's works → series via P179/P527) and
+    assign them to existing books by title matching. Returns (series, assigned)."""
+    a = db.q1("SELECT * FROM authors WHERE id=?", (author_id,))
+    if not a or not a["ol_key"]:
+        return 0, 0
+    detail = metadata.author_detail(a["ol_key"])
+    wd_id = (detail or {}).get("wikidata", "")
+    if not wd_id:
+        return 0, 0
+    data = metadata.wikidata_author_series(wd_id)
+    if not data.get("series"):
+        return 0, 0
+
+    books = db.q("SELECT id, title FROM books WHERE author_id=?", (author_id,))
+    by_norm = {}
+    for b in books:
+        by_norm.setdefault(db.norm_title(b["title"]), []).append(b["id"])
+
+    def match_books(w_title):
+        """Match semantics: the book's significant words (>= 4 chars) must be a
+        subset of the Wikidata title's words. This handles both full titles and
+        subtitles (e.g. DB 'The Gunslinger' ⊆ WD 'The Dark Tower: The Gunslinger')."""
+        wnorm = db.norm_title(w_title)
+        if wnorm in by_norm:
+            return list(by_norm[wnorm])
+        w_words = set(wnorm.split())
+        sig_w = {w for w in w_words if len(w) >= 4}
+        if not sig_w:
+            return []
+        ids = []
+        for b in books:
+            b_words = {w for w in db.norm_title(b["title"]).split() if len(w) >= 4}
+            if b_words and b_words <= sig_w:
+                ids.append(b["id"])
+        return ids
+
+    def get_or_create_series_dedup(name):
+        """Create a series, deduplicating against existing ones by normalized name
+        (prefers the shortest existing name — e.g. 'The Dark Tower' wins over
+        'The Dark Tower: The Gunslinger')."""
+        norm = db.norm_title(name)
+        existing = db.q("SELECT id, name FROM series WHERE author_id=?", (author_id,))
+        best = None
+        for e in existing:
+            en = db.norm_title(e["name"])
+            if en == norm or (len(norm) >= 8 and (norm in en or en in norm)):
+                if best is None or len(en) < len(db.norm_title(best["name"])):
+                    best = e
+        if best:
+            return best["id"], False
+        return _get_or_create_series(author_id, name, "", ""), True
+
+    new_series = 0
+    assigned = 0
+    now = db.now()
+    for s in data["series"]:
+        if metadata.is_collection_type(s.get("type", "")):
+            continue  # anthologies/collections are not series (P527 false positives)
+        sid, is_new = get_or_create_series_dedup(s["name"])
+        if is_new:
+            new_series += 1
+        for w in s["works"]:
+            for bid in match_books(w["title"]):
+                db.ex("UPDATE books SET series_id=?, series_number=?, updated=? WHERE id=?",
+                      (sid, w.get("ordinal", "") or db.q1(
+                          "SELECT series_number FROM books WHERE id=?", (bid,))["series_number"],
+                       now, bid))
+                assigned += 1
+    if new_series or assigned:
+        db.log_event("success", "wikidata",
+                     f"Wikidata series for '{a['name']}': {new_series} new, {assigned} assignments")
+    return new_series, assigned
 
 
 def _get_or_create_series(author_id, name, position, ol_work_key, ol_series_key=""):
@@ -197,6 +273,7 @@ def sync_author(author_id):
             pass
     db.ex("UPDATE authors SET last_checked=?, updated=? WHERE id=?", (now, now, author_id))
     _fill_author_language_fallback(author_id)
+    sync_series_from_wikidata(author_id)
     if new_books:
         db.log_event("info", "author", f"Sync '{a['name']}': {new_books} new books")
     return new_books

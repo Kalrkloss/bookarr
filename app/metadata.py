@@ -65,6 +65,7 @@ def author_detail(ol_key):
         "bio": _bio_text(d.get("bio")),
         "wikipedia_url": wikipedia,
         "website": website,
+        "wikidata": (d.get("remote_ids") or {}).get("wikidata", ""),
         "ol_key": ol_key,
     }
 
@@ -183,6 +184,66 @@ def detect_language_from_title(title):
         if char in t:
             return lang
     return ""
+
+
+# ---------------- Wikidata (series) ----------------
+
+WD_SPARQL = "https://query.wikidata.org/sparql"
+
+
+def wikidata_author_series(wikidata_id, timeout=30):
+    """Series of an author via Wikidata SPARQL.
+
+    Returns {"series": [{"name", "ol_key": "", "type", "works": [{"title", "ordinal"}]}]}.
+    Works link to a series via P179 (part of) or the series lists them via P527
+    (has part). English labels are preferred (order "en,de")."""
+    if not wikidata_id:
+        return {"series": []}
+    query = f"""
+    SELECT ?series ?seriesLabel ?work ?workLabel ?ordinal ?seriesType ?seriesTypeLabel WHERE {{
+      {{ ?work wdt:P50 wd:{wikidata_id}; wdt:P179 ?series . }}
+      UNION
+      {{ ?series wdt:P527 ?work . ?work wdt:P50 wd:{wikidata_id} . }}
+      OPTIONAL {{ ?work wdt:P1545 ?ordinal . }}
+      OPTIONAL {{ ?series wdt:P31 ?seriesType . }}
+      SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en,de". }}
+    }}"""
+    try:
+        r = SESSION.get(WD_SPARQL, params={"query": query, "format": "json"},
+                        timeout=timeout)
+        if r.status_code != 200:
+            return {"series": []}
+        bindings = r.json().get("results", {}).get("bindings", [])
+    except Exception:
+        return {"series": []}
+
+    series_map = {}
+    for b in bindings:
+        s_id = b.get("series", {}).get("value", "")
+        s_name = b.get("seriesLabel", {}).get("value", "")
+        w_title = b.get("workLabel", {}).get("value", "")
+        ordinal = b.get("ordinal", {}).get("value", "")
+        s_type = b.get("seriesTypeLabel", {}).get("value", "")
+        if not s_id or not s_name or not w_title:
+            continue
+        if re.fullmatch(r"Q\d+", s_name):
+            continue  # item has no label — the label service returns the QID
+        s = series_map.setdefault(s_id, {"name": s_name, "ol_key": "", "type": s_type, "works": []})
+        s["works"].append({"title": w_title, "ordinal": ordinal})
+    return {"series": list(series_map.values())}
+
+
+# Wikidata P31 types that are collections/anthologies, NOT series
+_COLLECTION_TYPES = {
+    "collection of literary works", "short story collection", "anthology",
+    "literary anthology", "poetry collection", "essay collection", "collected works",
+    "omnibus edition", "novel", "short story", "literary work", "written work",
+    "novella", "book", "box set",
+}
+
+
+def is_collection_type(series_type):
+    return (series_type or "").lower() in _COLLECTION_TYPES
 
 
 def search_books(query, limit=20):
