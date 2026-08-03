@@ -1,95 +1,121 @@
 # 📚 Bookarr
 
-Bookarr ist ein E-Book-Manager in der *arr-Familie (Sonarr/Radarr/Readarr-Stil) mit moderner
-Weboberfläche. Es verwaltet Autoren, Bücher und Serien, findet neue Veröffentlichungen aus
-offenen Datenbanken und lädt Bücher automatisch aus Usenet (NZB) und IRC herunter.
+**Bookarr** is an ebook manager in the spirit of the \*arr family (Sonarr / Radarr / Readarr).
+It keeps track of authors, books and series, discovers new releases from open databases,
+and downloads books automatically from **Usenet (NZB)** and **IRC** — all behind a modern,
+dark-themed web UI.
 
-## Funktionen
+## Features
 
-- **Metadaten aus offenen Quellen**
-  - Open Library: Autoren- und Buchsuche, komplette Werksverzeichnisse, Editionen mit
-    Erscheinungsdaten (auch zukünftige), Serien, Cover, ISBN
-  - Wikipedia: automatische Auswertung der Werke-/Bibliografie-Sektion einer Autorenseite
-  - Google Books (optional, mit API-Key): zusätzliche Serien- und Editionsdaten
-- **Autorenseiten** mit allen Büchern, Sprachfilter (z. B. nur DE/EN anzeigen) und
-  aufklappbaren Serien mit Bandnummern
-- **Monitoring**: Autoren und Serien können überwacht werden — regelmäßige Suche nach
-  neuen Büchern in konfigurierbaren Intervallen (Standard: wöchentlich)
-- **Wanted-System**: Bücher als *Wanted* markieren; die App sucht sie in konfigurierbaren
-  Intervallen (Standard: täglich) auf allen Quellen
-- **Download-Quellen**
-  - **Prowlarr / Newznab** (Usenet): Suche über alle konfigurierten Indexer, Download
-    über SABnzbd (Kategorie z. B. `ebook`)
-  - **IRC** (irchighway #ebooks): `@search`-Suche mit DCC-Ergebnisdatei, Download per
-    `!botname <Titel> ::INFO:: <Größe>` + DCC-Empfang (SSL, Etikette: 1 Aktion gleichzeitig)
-  - Direkte Newznab-Indexer zusätzlich zu Prowlarr
-- **Dublettenvermeidung**: normalisierte Titel + Autor (UNIQUE-Constraint), Serien-Bände
-  werden nicht doppelt angelegt
-- **Konvertierung**: heruntergeladene Bücher werden automatisch mit Calibre
-  (`ebook-convert`) in ein Zielformat (EPUB/MOBI/AZW3/PDF/FB2/TXT) umgewandelt
-- **Übersicht** (`/`): Wanted-Bücher, laufende Downloads mit Fortschritt, SABnzbd-Queue,
-  Ereignisprotokoll
-- **Aktivität**: Download-Verlauf und Ereignisprotokoll mit Fehler-/Warnungs-Filter
-- **System-Seite**: Verbindungsstatus zu Prowlarr/SABnzbd/IRC/Calibre, Scheduler-Zustand, Logs
-- ***arr-Look**: dunkles Theme, Badges, Fortschrittsbalken, Modals, Live-Aktualisierung
+- **Metadata from open sources**
+  - **Open Library**: author & book search, complete work catalogs, editions with publish
+    dates (including *upcoming* releases), series, covers, ISBNs
+  - **Wikipedia**: automatic extraction of the works/bibliography section of an author page
+  - **Google Books** (optional, with API key): additional series/edition data
+- **Author pages** with the full book catalog, a **language filter** (e.g. show only DE/EN)
+  and **expandable series** with volume numbers
+- **Monitoring**: authors and series can be monitored — Bookarr periodically checks for new
+  books at configurable intervals (default: weekly) and marks them as wanted
+- **Wanted system**: mark books as *wanted*; they are searched on all sources at configurable
+  intervals (default: daily)
+- **Download sources**
+  - **Prowlarr / Newznab** (Usenet): search across all configured indexers, download via
+    SABnzbd (category e.g. `ebook`)
+  - **IRC** (irchighway `#ebooks`): `@search` with DCC result files, downloads via
+    `!botname <title> ::INFO:: <size>` + DCC receive (SSL, one bot action at a time)
+  - Direct Newznab indexers in addition to Prowlarr
+- **Duplicate protection**: normalized title + author (UNIQUE constraint); series volumes are
+  never added twice
+- **Conversion**: downloaded books are automatically converted with Calibre
+  (`ebook-convert`) to a target format (EPUB / MOBI / AZW3 / PDF / FB2 / TXT)
+- **Overview page**: wanted books, active downloads with progress, SABnzbd queue, event log
+- **Activity**: download history and event log with error/warning filter
+- **System page**: connection status (Prowlarr / SABnzbd / IRC / Calibre), scheduler state, logs
+- **i18n**: all UI strings in resource files (`static/locales/{de,en}.json`); the language
+  follows the browser language and can be switched at any time via the dropdown in the top bar
+- **No hanging tasks**: every background task is bounded by timeouts — bounded IRC locks,
+  a stale-download watchdog (2 h → marked failed), startup cleanup for dead IRC downloads
+  and expiring search flags (30 min)
+
+## Stack
+
+- **Backend**: Python 3 + FastAPI + SQLite (WAL), background scheduler (threads)
+- **Frontend**: single-page app, vanilla JS, dark \*arr-style theme (no build step)
+- **Downloads**: SABnzbd (NZB), custom IRC client with DCC receive (SSL)
 
 ## Installation
 
+Requires Python 3.10+ (Debian/Ubuntu):
+
 ```bash
-# Abhängigkeiten
-apt install -y python3-venv calibre        # calibre nur für Konvertierung nötig
+# dependencies (calibre only needed for conversion)
+apt install -y python3-venv calibre
+
 cd /opt && git clone https://github.com/Kalrkloss/bookarr.git && cd bookarr
 python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 
-# systemd
+# systemd service
 install -m 644 systemd/bookarr.service /etc/systemd/system/
 systemctl daemon-reload && systemctl enable --now bookarr
 
-# optional: reverse proxy (lighttpd)
+# optional: reverse proxy (lighttpd) → http://<server>/bookarr/
 install -m 644 lighttpd/30-bookarr.conf /etc/lighttpd/conf-available/
 ln -s /etc/lighttpd/conf-available/30-bookarr.conf /etc/lighttpd/conf-enabled/
 service lighttpd force-reload
 ```
 
-Die Weboberfläche läuft dann auf **http://<server>:8788** (bzw. `/bookarr/` hinter dem Proxy).
+The web UI is then available at **http://<server>:8788** (or `/bookarr/` behind the proxy).
 
-## Konfiguration
+## Configuration
 
-Unter *Einstellungen* in der Weboberfläche:
+Under *Settings* in the web UI:
 
-| Bereich | Optionen |
+| Section | Options |
 |---|---|
-| Prowlarr | URL, API-Key, Newznab-Kategorien (Standard `7000,7020`) |
-| SABnzbd | URL, API-Key, Kategorie (muss in SABnzbd existieren, z. B. `ebook`) |
-| IRC | Server (`irc.irchighway.net:6697`), Channel (`#ebooks`), Bot-Nick (einzigartig!), SSL, max. Bots |
-| Google Books | optionaler API-Key |
-| Verzeichnisse | Download-Zwischenablage, Bibliothek |
-| Konvertierung | ein/aus, Zielformat |
-| Scheduler | Wanted-Suche ein/aus, Standard-Intervalle |
+| Prowlarr | URL, API key, Newznab categories (default `7000,7020`) |
+| SABnzbd | URL, API key, category (must exist in SABnzbd, e.g. `ebook`) |
+| IRC | Server (`irc.irchighway.net:6697`), channel (`#ebooks`), bot nick (must be unique!), SSL, max. bots |
+| Google Books | optional API key |
+| Folders | download staging folder, library (finished books) |
+| Conversion | on/off, target format |
+| Scheduler | wanted search on/off, default intervals |
 
-Zusätzliche Newznab-Indexer lassen sich direkt verwalten (Name, URL, API-Key, Kategorien, Priorität).
+Additional Newznab indexers can be managed directly (name, URL, API key, categories, priority).
 
-## IRC-Hinweise
+## IRC notes
 
-- irchighway blockt Plaintext-Verbindungen — SSL auf Port 6697 ist Pflicht
-- Der Bot-Nick muss einzigartig sein (nicht parallel im eigenen IRC-Client verwenden,
-  sonst Nick-Kollision und hängende Downloads)
-- Etikette: nur **eine** Bot-Aktion gleichzeitig (Lock), Mindestabstände 30 s (Suche) /
-  60 s (Download) — wird automatisch eingehalten
-- Bots antworten langsam (bis 90 s+): Such-Timeout 180 s, Download-Timeout 480 s
+- irchighway blocks plaintext connections — SSL on port 6697 is mandatory
+- The bot nick must be unique (do not use it in your own IRC client, otherwise nick
+  collisions cause stuck downloads)
+- Etiquette: only **one** bot action at a time (global lock), minimum gaps 30 s (search) /
+  60 s (download) are enforced automatically
+- Bots react slowly (up to 90 s+): search timeout 180 s, download timeout 480 s
+
+## Tests
+
+```bash
+# unit tests for the timeout hardening (isolated temp DB)
+./venv/bin/python -m unittest tests.test_timeouts -v
+
+# end-to-end UI test (Playwright, headless Chromium)
+python3 -m venv /opt/uitest-venv
+/opt/uitest-venv/bin/pip install -r tests/requirements-ui.txt
+/opt/uitest-venv/bin/playwright install --with-deps chromium
+BOOKARR_URL=http://127.0.0.1:8788 /opt/uitest-venv/bin/python tests/ui_test.py
+```
 
 ## API
 
-REST-API unter `/api/*` (JSON), z. B.:
+REST API under `/api/*` (JSON), e.g.:
 
-- `GET /api/status` — Zähler, Scheduler, Verbindungen
-- `GET /api/overview` — Wanted, aktive Downloads, Ereignisse
-- `POST /api/authors` `{ol_key, languages}` — Autor anlegen
-- `GET /api/authors/{id}?lang=de` — Autor mit Büchern/Serien (Sprachfilter)
-- `GET /api/search/metadata?q=…` — Autoren + Bücher + Wikipedia-Werke
-- `POST /api/wanted/search` — Wanted-Suche jetzt auslösen
+- `GET /api/status` — counters, scheduler, connectivity
+- `GET /api/overview` — wanted books, active downloads, events
+- `POST /api/authors` `{ol_key, languages}` — add an author
+- `GET /api/authors/{id}?lang=de` — author with books/series (language filter)
+- `GET /api/search/metadata?q=…` — authors + books + Wikipedia works
+- `POST /api/wanted/search` — trigger the wanted search now
 
-## Lizenz
+## License
 
-MIT — siehe [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
