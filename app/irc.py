@@ -149,11 +149,11 @@ class IrcSession(threading.Thread):
 
 
 def _parse_offer(text):
-    """Bot-Angebot aus '@search'-Antwort: '!botname <titel> ::INFO:: <size>'."""
-    m = re.search(r"^!(\S+)\s+(.+?)\s*::INFO::\s*([\d.]+[KMGT]?B?)", text.strip())
+    """Bot-Angebot aus '@search'-Antwort: '!botname <titel> ::INFO:: <size>' (Größe optional)."""
+    m = re.search(r"^!(\S+)\s+(.+?)(?:\s*::INFO::\s*([\d.]+[KMGT]?B?))?\s*$", text.strip())
     if not m:
         return None
-    return {"bot": m.group(1), "title": m.group(2).strip(), "size": m.group(3)}
+    return {"bot": m.group(1), "title": m.group(2).strip(), "size": m.group(3) or ""}
 
 
 def _title_norm(t):
