@@ -1,0 +1,18 @@
+[Unit]
+Description=Bookarr - Ebook-Manager (*arr-Familie)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bookarr
+ExecStart=/opt/bookarr/venv/bin/python /opt/bookarr/run.py
+Restart=on-failure
+RestartSec=5
+Environment=BOOKARR_PORT=8788
+# Logs
+StandardOutput=append:/opt/bookarr/data/bookarr.log
+StandardError=append:/opt/bookarr/data/bookarr.log
+
+[Install]
+WantedBy=multi-user.target

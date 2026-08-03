@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bookarr</title>
+<link rel="stylesheet" href="static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="logo">
+      <div class="logo-icon">📚</div>
+      <div class="logo-text">Book<span>arr</span></div>
+    </div>
+    <nav id="nav">
+      <a href="#/overview" data-nav="overview"><span class="nav-ico">▦</span> Übersicht</a>
+      <a href="#/books" data-nav="books"><span class="nav-ico">📖</span> Bücher</a>
+      <a href="#/authors" data-nav="authors"><span class="nav-ico">✒️</span> Autoren</a>
+      <a href="#/series" data-nav="series"><span class="nav-ico">🔗</span> Serien</a>
+      <a href="#/wanted" data-nav="wanted"><span class="nav-ico">⏳</span> Wanted <span id="nav-wanted-count" class="nav-count"></span></a>
+      <a href="#/activity" data-nav="activity"><span class="nav-ico">⇅</span> Aktivität</a>
+      <a href="#/settings" data-nav="settings"><span class="nav-ico">⚙</span> Einstellungen</a>
+      <a href="#/system" data-nav="system"><span class="nav-ico">🖥</span> System</a>
+    </nav>
+    <div id="sidebar-status">
+      <div class="conn-row"><span class="dot" id="dot-prowlarr"></span> Prowlarr</div>
+      <div class="conn-row"><span class="dot" id="dot-sabnzbd"></span> SABnzbd</div>
+      <div class="conn-row"><span class="dot" id="dot-irc"></span> IRC</div>
+      <div class="conn-row"><span class="dot" id="dot-convert"></span> Calibre</div>
+      <div id="scheduler-state" class="sched-line"></div>
+    </div>
+  </aside>
+  <main id="main">
+    <header id="topbar">
+      <div id="page-title">Übersicht</div>
+      <div class="top-actions">
+        <button class="btn" id="btn-search" title="Bücher & Autoren suchen">🔍 Suche</button>
+        <button class="btn" id="btn-wanted-search" title="Jetzt nach allen Wanted-Büchern suchen">⏳ Wanted-Suche</button>
+        <button class="btn" id="btn-sync-all" title="Überwachte Autoren & Serien aktualisieren">🔄 Sync</button>
+      </div>
+    </header>
+    <div id="content"></div>
+  </main>
+</div>
+
+<!-- Global-Suche Modal -->
+<div id="search-modal" class="modal hidden">
+  <div class="modal-box modal-lg">
+    <div class="modal-head">
+      <h2>Suche</h2>
+      <button class="modal-close" data-close="search-modal">✕</button>
+    </div>
+    <div class="search-input-row">
+      <input type="text" id="global-search-input" placeholder="Titel oder Autor … (Enter)" autocomplete="off">
+      <div class="seg" id="search-type-seg">
+        <button class="seg-btn active" data-type="all">Alle</button>
+        <button class="seg-btn" data-type="author">Autoren</button>
+        <button class="seg-btn" data-type="book">Bücher</button>
+      </div>
+    </div>
+    <div id="search-results" class="search-results"></div>
+  </div>
+</div>
+
+<!-- Buch-Detail Modal -->
+<div id="book-modal" class="modal hidden">
+  <div class="modal-box modal-lg">
+    <div class="modal-head">
+      <h2 id="bm-title">Buch</h2>
+      <button class="modal-close" data-close="book-modal">✕</button>
+    </div>
+    <div id="bm-body"></div>
+  </div>
+</div>
+
+<!-- Konfig Modal -->
+<div id="config-modal" class="modal hidden">
+  <div class="modal-box modal-sm">
+    <div class="modal-head">
+      <h2 id="cm-title">Konfiguration</h2>
+      <button class="modal-close" data-close="config-modal">✕</button>
+    </div>
+    <div id="cm-body"></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+<script src="static/app.js"></script>
+</body>
+</html>
