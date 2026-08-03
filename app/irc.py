@@ -273,7 +273,12 @@ class IrcSearch:
 
     def run(self):
         global _last_search
-        with _irc_lock:
+        # never wait forever on the global IRC lock: if another action holds it,
+        # give up after a bounded wait instead of hanging the caller
+        if not _irc_lock.acquire(timeout=120):
+            log.warning("IRC search skipped: another bot action is running")
+            return
+        try:
             wait = IRC_MIN_SEARCH - (time.time() - _last_search)
             if wait > 0:
                 time.sleep(wait)
@@ -288,6 +293,8 @@ class IrcSearch:
             self.done.wait(timeout=self.cfg["searchtimeout"])
             self._s.stop()
             _last_search = time.time()
+        finally:
+            _irc_lock.release()
         # keep only relevant offers (filter broadcasts of other searches)
         term = _title_norm(self.term)
         relevant = []
@@ -298,7 +305,7 @@ class IrcSearch:
             if term in nt or nt in term:
                 relevant.append(o)
                 continue
-            # Token-Overlap: min. ein Wort ≥ 4 Zeichen des Suchbegriffs im Titel
+            # token overlap: at least one word >= 4 chars of the search term in the title
             terms = {w for w in term.split() if len(w) >= 4}
             if terms and any(w in nt for w in terms):
                 relevant.append(o)
@@ -428,7 +435,11 @@ class IrcDownload:
 
     def run(self):
         global _last_dl
-        with _irc_lock:
+        # never wait forever on the global IRC lock (bounded by dltimeout + slack)
+        if not _irc_lock.acquire(timeout=self.cfg["dltimeout"] + 180):
+            self._fail("IRC download skipped: another bot action is running")
+            return
+        try:
             wait = IRC_MIN_DL - (time.time() - _last_dl)
             if wait > 0:
                 time.sleep(wait)
@@ -442,6 +453,8 @@ class IrcDownload:
             self._done.wait(timeout=self.cfg["dltimeout"])
             self._s.stop()
             _last_dl = time.time()
+        finally:
+            _irc_lock.release()
 
 
 def _ip_quad(addr):

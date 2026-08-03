@@ -449,7 +449,8 @@ def api_search_metadata(q: str = Query(..., min_length=2), type: str = "all"):
 
 
 # is a source search already running for this book? (dedupe against thread explosion)
-_search_running = {}
+_search_running = {}  # book_id -> start timestamp (monotonic)
+SEARCH_RUNNING_TIMEOUT = 1800  # 30 min: stale worker flag is reset automatically
 
 
 @app.get("/api/search/downloads")
@@ -458,7 +459,7 @@ def api_search_downloads(book_id: int):
     b = db.q1("SELECT * FROM books WHERE id=?", (book_id,))
     if not b:
         raise HTTPException(404)
-    # frischer Cache?
+    # fresh cache?
     cached = db.q1("SELECT results, created FROM searchcache WHERE book_id=?", (book_id,))
     if cached:
         try:
@@ -468,11 +469,14 @@ def api_search_downloads(book_id: int):
                 return {"done": True, "cached": True, "results": _json.loads(cached["results"])}
         except Exception:
             pass
-    # already running search for this book → return status only (frontend polls)
-    if _search_running.get(book_id):
+    # already running search for this book → return status only (frontend polls);
+    # a stale flag (crashed worker) expires after SEARCH_RUNNING_TIMEOUT
+    import time as _time
+    ts = _search_running.get(book_id)
+    if ts and _time.monotonic() - ts < SEARCH_RUNNING_TIMEOUT:
         return {"done": False, "running": True}
 
-    _search_running[book_id] = True
+    _search_running[book_id] = _time.monotonic()
 
     def _worker():
         try:
@@ -485,10 +489,10 @@ def api_search_downloads(book_id: int):
             db.ex("INSERT OR REPLACE INTO searchcache(book_id, results, created) VALUES(?,?,?)",
                   (book_id, "[]", db.now()))
         finally:
-            _search_running[book_id] = False
+            _search_running.pop(book_id, None)
 
     threading.Thread(target=_worker, daemon=True).start()
-    db.log_event("info", "search", f"Source search for '{b["title"]}' started …")
+    db.log_event("info", "search", f"Source search for '{b['title']}' started …")
     return {"done": False}
 
 

@@ -21,12 +21,28 @@ def start():
     _stop.clear()
     # reset statuses stuck after a crash
     db.ex("UPDATE wanted SET status='wanted' WHERE status IN ('searching','found')")
+    # IRC downloads cannot be resumed: any still-running one is dead after a restart
+    _cleanup_stale_irc()
     threading.Thread(target=_wanted_loop, name="wanted-loop", daemon=True).start()
     threading.Thread(target=_monitor_loop, name="monitor-loop", daemon=True).start()
     threading.Thread(target=_queue_loop, name="queue-loop", daemon=True).start()
+    threading.Thread(target=_stale_loop, name="stale-loop", daemon=True).start()
     _resume_nzb_downloads()
     _state["running"] = True
     log.info("Scheduler gestartet")
+
+
+def _cleanup_stale_irc():
+    for d in db.q("SELECT * FROM downloads WHERE source='irc' AND status='downloading'"):
+        db.ex("UPDATE downloads SET status='failed', message='Timeout: worker aborted (restart)', "
+              "updated=?, completed=? WHERE id=?", (db.now(), db.now(), d["id"]))
+        if d["book_id"]:
+            db.ex("UPDATE wanted SET status='wanted' WHERE book_id=?", (d["book_id"],))
+            db.ex("UPDATE books SET status='wanted', updated=? WHERE id=? AND status='snatched'",
+                  (db.now(), d["book_id"]))
+        db.log_event("warn", "download",
+                     f"IRC download #{d['id']} ('{d['title'][:40]}') aborted by restart, marked failed")
+        log.warning("IRC download #%s aborted by restart, marked failed", d["id"])
 
 
 def _resume_nzb_downloads():
@@ -179,6 +195,34 @@ def _queue_loop():
         except Exception:
             log.error("queue loop: %s", traceback.format_exc())
         _stop.wait(30)
+
+
+def _stale_loop():
+    """Watchdog: mark in-flight downloads that were never updated for 2h as failed.
+    Covers worker threads killed by a restart or any task that hung despite timeouts."""
+    while not _stop.is_set():
+        try:
+            _check_stale_downloads()
+        except Exception:
+            log.error("stale loop: %s", traceback.format_exc())
+        _stop.wait(300)
+
+
+def _check_stale_downloads():
+    rows = db.q("""SELECT * FROM downloads
+                   WHERE status IN ('queued','snatched','downloading')
+                     AND updated < datetime('now','localtime','-2 hours')""")
+    for d in rows:
+        db.ex("UPDATE downloads SET status='failed', progress=0, "
+              "message='Timeout: task hung (watchdog)', updated=?, completed=? WHERE id=?",
+              (db.now(), db.now(), d["id"]))
+        if d["book_id"]:
+            db.ex("UPDATE wanted SET status='wanted' WHERE book_id=?", (d["book_id"],))
+            db.ex("UPDATE books SET status='wanted', updated=? WHERE id=? AND status='snatched'",
+                  (db.now(), d["book_id"]))
+        db.log_event("warn", "download",
+                     f"Watchdog: hanging download #{d['id']} ('{d['title'][:40]}') marked as failed")
+        log.warning("Watchdog: hanging download #%s marked as failed", d["id"])
 
 
 def _sync_queue():
