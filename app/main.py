@@ -228,7 +228,7 @@ def api_wikipedia_scan(aid: int):
         db.ex("INSERT OR IGNORE INTO books(title, norm_title, author_id, language, publish_date, "
               "description, status, wanted, source, added, updated) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
               (w["title"], norm, aid, "", f"{w['year']}-01-01" if w["year"] else "",
-               f"Quelle: Wikipedia", "wanted" if want else "have", 1 if want else 0, "wikipedia",
+               f"Quelle: Wikipedia", "wanted" if want else "missing", 1 if want else 0, "wikipedia",
                db.now(), db.now()))
         added += 1
     db.log_event("success", "wikipedia", f"Wikipedia-Scan '{a['name']}': {added} neue Bücher")
@@ -315,6 +315,16 @@ def api_books(q: str = "", status: str = "", author_id: int = 0, language: str =
     return rows
 
 
+@app.get("/api/books/{bid}")
+def api_book_detail(bid: int):
+    b = db.q1("""SELECT b.*, a.name AS author_name, s.name AS series_name
+                 FROM books b LEFT JOIN authors a ON a.id=b.author_id
+                 LEFT JOIN series s ON s.id=b.series_id WHERE b.id=?""", (bid,))
+    if not b:
+        raise HTTPException(404, "Buch nicht gefunden")
+    return b
+
+
 class BookPatch(BaseModel):
     status: str = None
     wanted: int = None
@@ -368,7 +378,7 @@ def api_add_book(body: BookAdd):
         "cover_url, status, wanted, source, added, updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (body.title, norm, author_id, db.lang_code(body.language),
          f"{body.year}-01-01" if body.year else "", body.isbn, body.ol_work_key,
-         body.cover, "wanted" if body.wanted else "have", 1 if body.wanted else 0,
+         body.cover, "wanted" if body.wanted else "missing", 1 if body.wanted else 0,
          "ol", now, now))
     if body.wanted:
         library._set_wanted(bid)

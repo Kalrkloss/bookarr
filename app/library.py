@@ -79,7 +79,7 @@ def add_author(ol_key, languages=None):
                 (w["title"], db.norm_title(w["title"]), author_id, series_id, s.get("position", "") if w.get("series") else "",
                  lang, date, ed.get("isbn", ""), w["ol_work_key"], ed.get("ol_edition_key", ""),
                  w.get("description", "")[:2000], ed.get("cover") or w.get("cover", ""),
-                 "wanted" if _should_want(author_id, lang) else "have", 1 if _should_want(author_id, lang) else 0,
+                 "wanted" if _should_want(author_id, lang) else "missing", 1 if _should_want(author_id, lang) else 0,
                  "ol", now, now))
             added_books += 1
         except Exception:
@@ -174,7 +174,7 @@ def sync_author(author_id):
                 (title, norm, author_id, series_id, s.get("position", "") if w.get("series") else "",
                  lang, date,
                  "", w["ol_work_key"], w.get("description", "")[:2000], w.get("cover", ""),
-                 "wanted" if want else "have", 1 if want else 0, "ol", now, now))
+                 "wanted" if want else "missing", 1 if want else 0, "ol", now, now))
             new_books += 1
             if want:
                 _set_wanted(db.q1("SELECT id FROM books WHERE author_id=? AND norm_title=?", (author_id, norm))["id"])

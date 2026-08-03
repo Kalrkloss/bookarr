@@ -501,9 +501,13 @@ document.addEventListener("click", async e => {
 });
 
 async function showBookModal(id, opts = {}) {
-  const books = await api(`api/books?id=${id}`);
-  const b = books[0];
-  if (!b) return;
+  let b;
+  try {
+    b = await api(`api/books/${id}`);
+  } catch (e) {
+    toast("Fehler: " + e.message, "error");
+    return;
+  }
   openModal("book-modal");
   const body = document.getElementById("bm-body");
   body.innerHTML = `<div class="empty">${spinner()} Lade …</div>`;
