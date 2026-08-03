@@ -185,6 +185,21 @@ with sync_playwright() as p:
         page.screenshot(path=f"{SHOTS}/8-filtered.png")
     check("Books table: column filter popup filters + clears", t_filter_books)
 
+    def t_series_toggle():
+        goto(page, "/#/series")
+        page.wait_for_selector("#series-toggle-all", timeout=15000)
+        open_before = page.locator("#series-all .series-block.open").count()
+        assert open_before > 0, "keine offenen Serien"
+        page.click("#series-toggle-all")
+        page.wait_for_timeout(300)
+        assert page.locator("#series-all .series-block.open").count() == 0, "Serien nicht eingeklappt"
+        assert "ausklappen" in page.locator("#series-toggle-all").inner_text()
+        page.click("#series-toggle-all")
+        page.wait_for_timeout(300)
+        assert page.locator("#series-all .series-block.open").count() == open_before, "Serien nicht ausgeklappt"
+        page.screenshot(path=f"{SHOTS}/9-series-toggle.png")
+    check("Series page: expand/collapse-all button", t_series_toggle)
+
     browser.close()
 
 print(f"\n=== RESULT: {total_checks - len(fails)} PASS / {len(fails)} FAIL ===")

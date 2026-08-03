@@ -1094,14 +1094,15 @@ async function pageAuthor(content, param) {
     </div>
 
     ${d.series.length ? `<div class="panel">
-      <div class="panel-head"><span>${t("authors.series_panel", { n: d.series.length })}</span></div>
+      <div class="panel-head"><span>${t("authors.series_panel", { n: d.series.length })}</span>
+        <button class="btn small" id="series-toggle-all">${t("series.expand_all")}</button></div>
       <div class="panel-body" id="series-list">
         ${d.series.map(s => seriesBlock(s)).join("")}
       </div>
     </div>` : ""}
 
     <div class="panel">
-      <div class="panel-head"><span>${t("authors.books_panel", { n: d.books.length })}</span>
+      <div class="panel-head"><span id="author-books-head">${t("authors.books_panel", { n: d.books.length })}</span>
         <span class="muted" style="font-weight:400;font-size:12px">${d.languages.length ? t("authors.lang_filter_hint") : ""}</span>
       </div>
       <div class="panel-body" id="author-books"></div>
@@ -1115,6 +1116,7 @@ async function pageAuthor(content, param) {
   renderAuthorBooks();
   registerTable(TABLE_ID, renderAuthorBooks, () => currentBooks);
   registerSeriesTables(d.series);
+  setupSeriesToggle("series-list", "series-toggle-all");
 
   document.getElementById("lang-chips").addEventListener("click", async e => {
     const chip = e.target.closest(".chip");
@@ -1125,11 +1127,31 @@ async function pageAuthor(content, param) {
     const sb = document.getElementById("series-list");
     if (sb) sb.innerHTML = d2.series.map(seriesBlock).join("");
     registerSeriesTables(d2.series);
+    updateSeriesToggleLabel("series-list", "series-toggle-all");
     currentBooks = d2.books;
     renderAuthorBooks();
-    const head = document.querySelector(".panel-head span");
-    head.textContent = t("authors.books_panel", { n: d2.books.length });
+    document.getElementById("author-books-head").textContent =
+      t("authors.books_panel", { n: d2.books.length });
   });
+}
+
+function setupSeriesToggle(containerId, btnId) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    const blocks = [...document.querySelectorAll(`#${containerId} .series-block`)];
+    const allOpen = blocks.length > 0 && blocks.every(b => b.classList.contains("open"));
+    blocks.forEach(b => b.classList.toggle("open", !allOpen));
+    btn.textContent = allOpen ? t("series.expand_all") : t("series.collapse_all");
+  });
+}
+
+function updateSeriesToggleLabel(containerId, btnId) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  const blocks = [...document.querySelectorAll(`#${containerId} .series-block`)];
+  const allOpen = blocks.length > 0 && blocks.every(b => b.classList.contains("open"));
+  btn.textContent = allOpen ? t("series.collapse_all") : t("series.expand_all");
 }
 
 let stateAuthorLang = "";
@@ -1356,24 +1378,26 @@ async function pageSeries(content) {
   }
   content.innerHTML = `
     <div class="panel">
-      <div class="panel-head"><span>${t("series.all_panel", { n: allSeries.length })}</span></div>
-      <div class="panel-body" id="series-all">
-        ${allSeries.length ? allSeries.map(s => `
-          <div class="series-block open">
-            <div class="series-head" data-toggle-series>
-              <span class="chev">▶</span>
-              <span class="s-name">${esc(s.name)} <span class="muted">${t("series.by", { author: esc(s.author) })}</span></span>
-              <span class="muted">${t("series.volumes", { n: s.book_count })}</span>
-              <span class="badge ${s.monitor ? "monitor-on" : "monitor-off"}">${s.monitor ? t("status.monitored") : t("status.not_monitored")}</span>
-              <button class="btn small" data-act="series-monitor" data-id="${s.id}" data-mon="${s.monitor}">⚙</button>
-            </div>
-            <div class="series-body" id="series-body-${s.id}">
-              ${seriesBooksTable(s.books, `series-${s.id}`)}
-            </div>
-          </div>`).join("") : `<div class="empty">${esc(t("series.empty"))}</div>`}
-      </div>
+      <div class="panel-head"><span>${t("series.all_panel", { n: allSeries.length })}</span>
+        <button class="btn small" id="series-toggle-all">${t("series.expand_all")}</button></div>
+      <div class="panel-body" id="series-all"></div>
     </div>`;
+  document.getElementById("series-all").innerHTML =
+    allSeries.length ? allSeries.map(s => `
+      <div class="series-block open">
+        <div class="series-head" data-toggle-series>
+          <span class="chev">▶</span>
+          <span class="s-name">${esc(s.name)} <span class="muted">${t("series.by", { author: esc(s.author) })}</span></span>
+          <span class="muted">${t("series.volumes", { n: s.book_count })}</span>
+          <span class="badge ${s.monitor ? "monitor-on" : "monitor-off"}">${s.monitor ? t("status.monitored") : t("status.not_monitored")}</span>
+          <button class="btn small" data-act="series-monitor" data-id="${s.id}" data-mon="${s.monitor}">⚙</button>
+        </div>
+        <div class="series-body" id="series-body-${s.id}">
+          ${seriesBooksTable(s.books, `series-${s.id}`)}
+        </div>
+      </div>`).join("") : `<div class="empty">${esc(t("series.empty"))}</div>`;
   registerSeriesTables(allSeries);
+  setupSeriesToggle("series-all", "series-toggle-all");
 }
 
 /* ============ page: wanted ============ */

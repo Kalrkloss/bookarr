@@ -186,7 +186,9 @@
     "volumes": "{n} volumes",
     "by": "by {author}",
     "empty": "No series available.",
-    "no_books": "No books in this series."
+    "no_books": "No books in this series.",
+    "expand_all": "Expand all",
+    "collapse_all": "Collapse all"
   },
   "wanted": {
     "searching_count": "{n} books being searched",

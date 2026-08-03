@@ -186,7 +186,9 @@
     "volumes": "{n} Bände",
     "by": "von {author}",
     "empty": "Keine Serien vorhanden.",
-    "no_books": "Keine Bücher in dieser Serie."
+    "no_books": "Keine Bücher in dieser Serie.",
+    "expand_all": "Alle ausklappen",
+    "collapse_all": "Alle einklappen"
   },
   "wanted": {
     "searching_count": "{n} Bücher werden gesucht",
