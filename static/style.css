@@ -234,6 +234,8 @@ tr.clickable { cursor: pointer; }
   display: flex; align-items: center; justify-content: center; z-index: 100;
 }
 .modal.hidden { display: none; }
+/* generic hidden helper — also covers dropdown-menu and any future toggle element */
+.hidden { display: none !important; }
 .modal-box {
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 10px; width: 640px; max-width: 94vw;
@@ -318,10 +320,12 @@ tr.clickable { cursor: pointer; }
 .dropdown { position: relative; display: inline-block; }
 .dropdown-menu {
   position: absolute; right: 0; top: calc(100% + 4px);
+  display: flex; flex-direction: column;
   background: var(--panel-2); border: 1px solid var(--border);
   border-radius: 6px; min-width: 140px; z-index: 60;
   box-shadow: 0 8px 24px rgba(0,0,0,.45); overflow: hidden;
 }
+.dropdown-menu.hidden { display: none !important; }
 .dropdown-item {
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
   background: none; border: none; color: var(--text);
