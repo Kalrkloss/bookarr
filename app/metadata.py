@@ -233,12 +233,12 @@ def wikidata_author_series(wikidata_id, timeout=30):
     return {"series": list(series_map.values())}
 
 
-# Wikidata P31 types that are collections/anthologies, NOT series
+# Wikidata P31 types that are collections/anthologies/editions, NOT series
 _COLLECTION_TYPES = {
     "collection of literary works", "short story collection", "anthology",
     "literary anthology", "poetry collection", "essay collection", "collected works",
     "omnibus edition", "novel", "short story", "literary work", "written work",
-    "novella", "book", "box set",
+    "novella", "book", "box set", "edition",
 }
 
 
