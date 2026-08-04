@@ -102,15 +102,17 @@ with sync_playwright() as p:
     check("Language switch DE→EN→DE (title, nav, button label)", t_lang_switch)
 
     def wait_table_stable(selector):
-        """Wait until the books table has settled (async load + 8-15s polling
-        re-renders detach elements mid-click — wait for 2 identical counts)."""
+        """Wait until the books table has settled (async load + re-renders
+        detach elements mid-click — wait for 2 identical counts, then a quiet
+        buffer). Slow server: allow up to ~30s for the initial API response."""
         last, stable = -1, 0
-        for _ in range(40):
+        for _ in range(100):
             page.wait_for_timeout(300)
             n = page.locator(selector).count()
             if n and n == last:
                 stable += 1
-                if stable >= 2:
+                if stable >= 3:
+                    page.wait_for_timeout(500)
                     return n
             else:
                 last, stable = n, 0
