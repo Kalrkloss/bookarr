@@ -101,8 +101,24 @@ with sync_playwright() as p:
         assert page.locator("#btn-lang").inner_text().strip() == "DE ▾"
     check("Language switch DE→EN→DE (title, nav, button label)", t_lang_switch)
 
+    def wait_table_stable(selector):
+        """Wait until the books table has settled (async load + 8-15s polling
+        re-renders detach elements mid-click — wait for 2 identical counts)."""
+        last, stable = -1, 0
+        for _ in range(40):
+            page.wait_for_timeout(300)
+            n = page.locator(selector).count()
+            if n and n == last:
+                stable += 1
+                if stable >= 2:
+                    return n
+            else:
+                last, stable = n, 0
+        return last
+
     def t_book_modal():
         goto(page, "/#/books")
+        assert wait_table_stable("tr[data-act='book-open']") > 0, "Bücher-Tabelle leer"
         page.locator("tr[data-act='book-open']").first.click()
         # wait for the modal to actually be open, then closed — a leftover modal
         # overlay would block every later real click
@@ -116,6 +132,7 @@ with sync_playwright() as p:
     def t_wanted_scroll():
         goto(page, "/#/books")
         page.wait_for_selector("[data-act='book-wanted']", timeout=15000)
+        wait_table_stable("[data-act='book-wanted']")
         # scroll the content area down, then click a wanted button PROGRAMMATICALLY
         # (a real pointer click would auto-scroll it into view — playwright behavior, not the app)
         page.evaluate("document.getElementById('content').scrollTop = 2500")
@@ -222,6 +239,30 @@ with sync_playwright() as p:
         # viewer navigation: next/prev buttons + progress display must exist
         assert page.locator("#vm-nav").is_visible(), "Viewer-Navigation nicht sichtbar"
         assert page.locator("#vm-pos").inner_text() != "—", "Fortschritt nicht gesetzt"
+        # toolbar: font size, spread toggle, TOC button
+        assert page.locator("#vm-toolbar").is_visible(), "Viewer-Toolbar nicht sichtbar"
+        font0 = page.locator("#vm-font-val").inner_text()
+        page.click("#vm-font-inc")
+        assert page.locator("#vm-font-val").inner_text() != font0, "Schriftgröße nicht geändert"
+        spread0 = page.locator("#vm-spread").inner_text()
+        page.click("#vm-spread")
+        assert page.locator("#vm-spread").inner_text() != spread0, "Seitenansicht nicht umgeschaltet"
+        # TOC opens and lists chapters
+        page.click("#vm-toc-toggle")
+        page.wait_for_selector("#vm-toc .toc-item", timeout=15000)
+        assert page.locator("#vm-toc .toc-item").count() > 3, "TOC ohne Kapitel"
+        page.screenshot(path=f"{SHOTS}/10-viewer-toc.png")
+        # click a TOC entry → jumps (chapter display changes)
+        page.locator("#vm-toc .toc-item").nth(3).click()
+        page.wait_for_timeout(1500)
+        assert page.locator("#vm-chapter").inner_text() != "", "Kapitelanzeige leer nach TOC-Sprung"
+        assert page.locator("#vm-toc").is_hidden(), "TOC nicht geschlossen nach Sprung"
+        # progress slider: chapter-based seek must move the position
+        page.locator("#vm-progress").fill("900")
+        page.locator("#vm-progress").dispatch_event("change")
+        page.wait_for_timeout(1500)
+        assert int(page.locator("#vm-progress").input_value()) > 800, "Seek ~90% nicht erreicht"
+        assert page.locator("#vm-chapter").inner_text() != "", "Kapitelanzeige leer nach Seek"
         # paging must actually turn pages: keep pressing next until visible text
         # appears in the epub.js iframe (the first pages are cover/blank)
         def iframe_text():

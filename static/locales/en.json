@@ -159,6 +159,12 @@
     "download": "Download",
     "viewer_prev": "Previous page (←)",
     "viewer_next": "Next page (→)",
+    "viewer_font_dec": "Decrease font size",
+    "viewer_font_inc": "Increase font size",
+    "viewer_spread_1": "1 page",
+    "viewer_spread_2": "2 pages",
+    "viewer_spread_title": "Toggle page view",
+    "viewer_toc": "Contents",
     "viewer_unsupported": "Format {format} cannot be displayed in the browser."
   },
   "sources": {

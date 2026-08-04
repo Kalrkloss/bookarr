@@ -159,6 +159,12 @@
     "download": "Download",
     "viewer_prev": "Vorherige Seite (←)",
     "viewer_next": "Nächste Seite (→)",
+    "viewer_font_dec": "Schrift verkleinern",
+    "viewer_font_inc": "Schrift vergrößern",
+    "viewer_spread_1": "1 Seite",
+    "viewer_spread_2": "2 Seiten",
+    "viewer_spread_title": "Seitenansicht umschalten",
+    "viewer_toc": "Inhalt",
     "viewer_unsupported": "Format {format} kann nicht im Browser angezeigt werden."
   },
   "sources": {

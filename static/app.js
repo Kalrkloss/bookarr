@@ -401,9 +401,18 @@ let _rendition = null; // active epub.js rendition (book viewer)
 
 function openModal(id) { document.getElementById(id).classList.remove("hidden"); }
 function closeModal(id) {
-  if (id === "viewer-modal" && _rendition) {
-    try { _rendition.destroy(); } catch (e) {}
-    _rendition = null;
+  if (id === "viewer-modal") {
+    _locReady = false;
+    if (_rendition) {
+      try { _rendition.destroy(); } catch (e) {}
+      _rendition = null;
+    }
+    if (_book) {
+      try { _book.destroy(); } catch (e) {} // also aborts running locations.generate()
+      _book = null;
+    }
+    _tocEntries = [];
+    _tocReady = false;
   }
   document.getElementById(id).classList.add("hidden");
 }
@@ -967,6 +976,80 @@ async function showBookModal(id, opts = {}) {
 }
 
 /* ============ book viewer (pdf/txt/html native, epub via epub.js) ============ */
+let _book = null;       // active epub.js Book
+let _tocEntries = [];   // flattened [label, href, depth]
+let _tocReady = false;  // toc entries mapped onto spine hrefs
+let _locReady = false;  // locations generated (real % + slider seek)
+
+const VIEWER_CFG_KEY = "bookarr.viewer";
+
+function viewerCfg() {
+  return Object.assign({ fontSize: "120%", spread: "auto" },
+    JSON.parse(localStorage.getItem(VIEWER_CFG_KEY) || "{}"));
+}
+function saveViewerCfg(cfg) { localStorage.setItem(VIEWER_CFG_KEY, JSON.stringify(cfg)); }
+
+function flattenToc(items, depth = 0) {
+  for (const it of items || []) {
+    _tocEntries.push({ label: it.label, href: it.href, depth });
+    if (it.subitems && it.subitems.length) flattenToc(it.subitems, depth + 1);
+  }
+}
+
+function renderToc() {
+  const box = document.getElementById("vm-toc");
+  if (!box) return;
+  box.innerHTML = _tocEntries.map(e =>
+    `<button class="toc-item" data-href="${esc(e.href)}" style="padding-left:${10 + e.depth * 14}px">${esc(e.label)}</button>`
+  ).join("");
+  box.querySelectorAll(".toc-item").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (_rendition) _rendition.display(btn.dataset.href);
+      box.classList.add("hidden");
+    });
+  });
+}
+
+function onRelocated(loc) {
+  const posEl = document.getElementById("vm-pos");
+  const chapterEl = document.getElementById("vm-chapter");
+  const bar = document.getElementById("vm-progress");
+  const pctEl = document.getElementById("vm-progress-pct");
+  if (!posEl) return;
+  const href = loc && loc.start ? loc.start.href : "";
+  const tocIdx = _tocReady ? _tocEntries.findIndex(e => e.href === href) : -1;
+  const entry = tocIdx >= 0 ? _tocEntries[tocIdx] : null;
+  if (chapterEl) chapterEl.textContent = entry ? entry.label : "";
+  // fine-grained progress once locations are ready
+  if (_locReady && loc && loc.start && loc.start.percentage != null) {
+    const pct = Math.round(loc.start.percentage * 1000) / 10;
+    const txt = pct.toLocaleString(navigator.language, { maximumFractionDigits: 1 }) + " %";
+    posEl.textContent = txt;
+    if (pctEl) pctEl.textContent = txt;
+    if (bar) { bar.value = Math.round(loc.start.percentage * 1000); bar.disabled = false; }
+    return;
+  }
+  // chapter-based fallback (instant, no locations needed):
+  // position = chapter index share + page share inside the chapter
+  const d = loc && loc.start && loc.start.displayed;
+  let pct = null;
+  if (_tocReady && _tocEntries.length > 1 && tocIdx >= 0) {
+    const chapShare = tocIdx / (_tocEntries.length - 1);
+    const pageShare = (d && d.total) ? (d.page - 1) / d.total / (_tocEntries.length - 1) : 0;
+    pct = Math.max(0, Math.min(1, chapShare + pageShare));
+  } else if (d && d.total) {
+    pct = (d.page - 1) / d.total;
+  }
+  if (pct != null) {
+    const txt = (Math.round(pct * 1000) / 10).toLocaleString(navigator.language, { maximumFractionDigits: 1 }) + " %";
+    posEl.textContent = txt;
+    if (pctEl) pctEl.textContent = txt;
+    if (bar) { bar.value = Math.round(pct * 1000); bar.disabled = false; }
+  } else {
+    posEl.textContent = (d && d.total) ? `${d.page}/${d.total}` : "…";
+  }
+}
+
 function openViewer(book) {
   const ext = (book.file_path || "").split(".").pop().toLowerCase();
   document.getElementById("vm-title").textContent = book.title;
@@ -977,27 +1060,80 @@ function openViewer(book) {
   const pos = document.getElementById("vm-pos");
   const prevBtn = document.getElementById("vm-prev");
   const nextBtn = document.getElementById("vm-next");
+  const toolbar = document.getElementById("vm-toolbar");
+  const tocBox = document.getElementById("vm-toc");
+  const progressWrap = document.getElementById("vm-progress-wrap");
   const isEpub = ext === "epub";
   nav.classList.toggle("hidden", !isEpub);
+  toolbar.classList.toggle("hidden", !isEpub);
+  progressWrap.classList.toggle("hidden", !isEpub);
+  tocBox.classList.add("hidden");
+  tocBox.innerHTML = "";
+  _book = null; _tocEntries = []; _tocReady = false; _locReady = false;
+  document.getElementById("vm-chapter").textContent = "";
+  const bar = document.getElementById("vm-progress");
+  bar.value = 0; bar.disabled = true;
+  document.getElementById("vm-progress-pct").textContent = "0%";
   if (isEpub) {
     prevBtn.title = t("book.viewer_prev");
     nextBtn.title = t("book.viewer_next");
+    const cfg = viewerCfg();
+    const fontVal = document.getElementById("vm-font-val");
+    const spreadBtn = document.getElementById("vm-spread");
+    fontVal.textContent = cfg.fontSize;
+    spreadBtn.textContent = cfg.spread === "none" ? t("book.viewer_spread_1") : t("book.viewer_spread_2");
+    spreadBtn.title = t("book.viewer_spread_title");
+    document.getElementById("vm-font-dec").title = t("book.viewer_font_dec");
+    document.getElementById("vm-font-inc").title = t("book.viewer_font_inc");
+    document.getElementById("vm-toc-toggle").title = t("book.viewer_toc");
   }
   if (["pdf", "txt", "html", "htm"].includes(ext)) {
     body.innerHTML = `<iframe src="${url}" style="width:100%;height:100%;border:none"></iframe>`;
   } else if (isEpub && typeof ePub === "function") {
     body.innerHTML = `<div id="vm-epub" style="width:100%;height:100%"></div>`;
+    const cfg = viewerCfg();
     // load the file as an ArrayBuffer — passing the URL directly would make
     // epub.js resolve the epub's internal paths against it (404)
     fetch(url).then(r => r.arrayBuffer()).then(buf => {
       if (!document.getElementById("vm-epub")) return; // modal was closed meanwhile
       const book2 = ePub(buf);
-      _rendition = book2.renderTo("vm-epub", { width: "100%", height: "100%" });
+      _book = book2;
+      _rendition = book2.renderTo("vm-epub", { width: "100%", height: "100%", spread: cfg.spread });
+      if (_rendition.themes && typeof _rendition.themes.fontSize === "function") {
+        _rendition.themes.fontSize(cfg.fontSize);
+      }
       _rendition.display();
-      _rendition.on("relocated", loc => {
-        const p = loc && loc.start && loc.start.percentage;
-        if (p != null) pos.textContent = `${Math.max(1, Math.round(p * 100))}%`;
-      });
+      _rendition.on("relocated", onRelocated);
+      // navigation + spine must BOTH be loaded: the toc hrefs are relative
+      // ("cover.xhtml") while relocated reports full spine paths — map the
+      // toc entries onto spine hrefs so jumps and the chapter display match
+      Promise.all([book2.loaded.navigation, book2.ready]).then(([nav2]) => {
+        flattenToc(nav2.toc);
+        const spineHrefs = (book2.spine.spineItems || []).map(s => s.href);
+        if (spineHrefs.length) {
+          _tocEntries = _tocEntries.map(e => {
+            const base = (e.href || "").split("/").pop();
+            const spine = spineHrefs.find(h => h.split("/").pop() === base);
+            return spine ? { ...e, href: spine } : e;
+          });
+        }
+        _tocReady = true;
+        renderToc();
+        const loc = _rendition.currentLocation();
+        if (loc) onRelocated(loc);
+        // locations generate() needs the loaded spine to produce anything;
+        // on slow machines it can take minutes — run it async and only enable
+        // the fine % + slider seek when it actually produced locations
+        if (book2.locations && typeof book2.locations.generate === "function") {
+          book2.locations.generate(4000).then(() => {
+            if (_book !== book2) return; // viewer was closed meanwhile
+            if (!book2.locations.total || book2.locations.total < 2) return; // nothing usable
+            _locReady = true;
+            const loc2 = _rendition.currentLocation();
+            if (loc2) onRelocated(loc2);
+          }).catch(() => {});
+        }
+      }).catch(() => {});
       prevBtn.onclick = () => _rendition.prev();
       nextBtn.onclick = () => _rendition.next();
     }).catch(() => {
@@ -1012,6 +1148,67 @@ function openViewer(book) {
   }
   openModal("viewer-modal");
 }
+
+// viewer toolbar: font size + spread + toc
+document.getElementById("vm-font-dec").addEventListener("click", () => {
+  if (!_rendition) return;
+  const cfg = viewerCfg();
+  const sizes = ["80%", "90%", "100%", "110%", "120%", "130%", "140%", "160%", "180%", "200%"];
+  let i = sizes.indexOf(cfg.fontSize);
+  if (i < 0) i = 4;
+  cfg.fontSize = sizes[Math.max(0, i - 1)];
+  saveViewerCfg(cfg);
+  document.getElementById("vm-font-val").textContent = cfg.fontSize;
+  if (_rendition.themes && typeof _rendition.themes.fontSize === "function") {
+    _rendition.themes.fontSize(cfg.fontSize);
+  }
+});
+document.getElementById("vm-font-inc").addEventListener("click", () => {
+  if (!_rendition) return;
+  const cfg = viewerCfg();
+  const sizes = ["80%", "90%", "100%", "110%", "120%", "130%", "140%", "160%", "180%", "200%"];
+  let i = sizes.indexOf(cfg.fontSize);
+  if (i < 0) i = 4;
+  cfg.fontSize = sizes[Math.min(sizes.length - 1, i + 1)];
+  saveViewerCfg(cfg);
+  document.getElementById("vm-font-val").textContent = cfg.fontSize;
+  if (_rendition.themes && typeof _rendition.themes.fontSize === "function") {
+    _rendition.themes.fontSize(cfg.fontSize);
+  }
+});
+document.getElementById("vm-spread").addEventListener("click", () => {
+  if (!_rendition) return;
+  const cfg = viewerCfg();
+  cfg.spread = cfg.spread === "none" ? "auto" : "none";
+  saveViewerCfg(cfg);
+  document.getElementById("vm-spread").textContent =
+    cfg.spread === "none" ? t("book.viewer_spread_1") : t("book.viewer_spread_2");
+  if (typeof _rendition.spread === "function") _rendition.spread(cfg.spread);
+});
+document.getElementById("vm-toc-toggle").addEventListener("click", () => {
+  const box = document.getElementById("vm-toc");
+  box.classList.toggle("hidden");
+  if (!box.classList.contains("hidden") && !box.innerHTML) renderToc();
+});
+document.getElementById("vm-progress").addEventListener("input", e => {
+  const pct = +e.target.value / 1000;
+  document.getElementById("vm-progress-pct").textContent =
+    (Math.round(pct * 1000) / 10).toLocaleString(navigator.language, { maximumFractionDigits: 1 }) + " %";
+});
+document.getElementById("vm-progress").addEventListener("change", e => {
+  const pct = +e.target.value / 1000;
+  // fine seek via locations when ready
+  if (_book && _locReady) {
+    const cfi = _book.locations.cfiFromPercentage(pct);
+    if (cfi) { _rendition.display(cfi); return; }
+  }
+  // chapter-based seek: jump to the chapter closest to the target position
+  if (_tocReady && _tocEntries.length > 1) {
+    const idx = Math.round(pct * (_tocEntries.length - 1));
+    const target = _tocEntries[Math.max(0, Math.min(_tocEntries.length - 1, idx))];
+    if (target && target.href) _rendition.display(target.href);
+  }
+});
 
 // keyboard paging in the viewer (only while it is open)
 document.addEventListener("keydown", e => {

@@ -105,7 +105,26 @@
       </div>
       <button class="modal-close" data-close="viewer-modal">✕</button>
     </div>
-    <div id="vm-body" style="flex:1;min-height:0;background:#fff"></div>
+    <div class="viewer-toolbar hidden" id="vm-toolbar">
+      <div class="vt-group">
+        <button class="btn small" id="vm-font-dec" title="">A−</button>
+        <span id="vm-font-val" class="viewer-pos">100%</span>
+        <button class="btn small" id="vm-font-inc" title="">A+</button>
+      </div>
+      <div class="vt-group">
+        <button class="btn small" id="vm-spread" title=""></button>
+      </div>
+      <span id="vm-chapter" class="viewer-chapter"></span>
+      <button class="btn small" id="vm-toc-toggle" title="">☰ <span data-i18n="book.viewer_toc">Inhalt</span></button>
+    </div>
+    <div class="viewer-main">
+      <div id="vm-toc" class="viewer-toc hidden"></div>
+      <div id="vm-body" style="flex:1;min-width:0;background:#fff"></div>
+    </div>
+    <div class="viewer-progress hidden" id="vm-progress-wrap">
+      <input type="range" id="vm-progress" min="0" max="1000" value="0" step="1" disabled>
+      <span id="vm-progress-pct" class="viewer-pos">0%</span>
+    </div>
   </div>
 </div>
 
